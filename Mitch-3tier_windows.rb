@@ -1,11 +1,11 @@
-name '3Tier: Windows IIS with MS SQL Server'
+name 'Mitch - 3Tier: Windows IIS with MS SQL Server'
 rs_ca_ver 20131202
-short_description "3 Tier deployment using the latest v13.5 LTS ServerTemplates."
+short_description "Mitch-ified Version of Ryan O'Leary's 3 Tier deployment using the latest v13.5 LTS ServerTemplates."
 long_description "
 3 Tier deployment using the latest v13.5 LTS ServerTemplates.
  - HAProxy Load Balancer, Microsoft IIS Application Server, Database Manager for Microsoft SQL Server
 
-DNS Provider: DNS Made Easy
+DNS Provider: DNS Made Easy but not really since this version passes IP address to the services.
 
 Notes:
  - All servers are configured for the Microsoft 'AWS US-West' cloud.
@@ -14,10 +14,49 @@ Notes:
  - Application servers checkout the application code from an Amazon S3 bucket.
  - HAProxy load balancers demonstrate a single load balancing pool ('default') configuration.
  - The deployment does not have a server array for autoscaling the application tier.
- - Website: http://michelle-www.rightscaleblue.com
-
  "
+##############
+# PARAMETERS #
+##############
 
+parameter "param_cloud" do 
+  category "Cloud options"
+  label "Cloud" 
+  type "string" 
+  description "Cloud provider" 
+  allowed_values "AWS", "Azure"
+  default "AWS"
+end
+parameter "performance" do
+  category "Performance profile" 
+  label "Application Performance" 
+  type "string" 
+  description "Determines the instance type of the DB and App Servers" 
+  allowed_values "low", "high"
+  default "low"
+end
+parameter "ha" do 
+  category "Performance profile" 
+  label "High Availability"
+  type "string" 
+  description "Redundant DB and LB required?" 
+  allowed_values "yes", "no"
+  default "no"
+end
+parameter "array_min_size" do
+  category "Application Server Array"
+  label "Array Minimum Size"
+  type "number"
+  description "Minimum number of servers in the array"
+  default "1"
+end
+parameter "array_max_size" do
+  category "Application Server Array"
+  label "Array Maximum Size"
+  type "number"
+  description "Maximum number of servers in the array"
+  default "5"
+end
 parameter "environment" do
   type "string"
   label "Environment Type"
@@ -27,10 +66,58 @@ parameter "environment" do
   description "Specify whether you'd like a Dev or Staging environment. The primary difference is the Dev environment does not stand up a Slave DB or take Master DB backups regularly."
 end
 
+##############
+# MAPPINGS   #
+##############
+
+mapping "profiles" do { 
+  "low" => {   
+    "db_instance_type" => "instance_type_low",   
+    "app_instance_type" => "instance_type_low"  }, 
+  "high" => {   
+    "db_instance_type" => "instance_type_high",   
+    "app_instance_type" => "instance_type_high"  } }
+end
+
+mapping "map_cloud" do {
+  "AWS" => {
+    "cloud" => "us-west-1",
+    "datacenter" => "us-west-1c",
+    "subnet" => "us-west-1c",
+    "instance_type_low" => "m1.small",
+    "instance_type_high" => "m1.large",
+    "security_group" => "MitchG_DB",
+    "ssh_key" => "MitchG_sshKey_2",
+  },
+  "Azure" => {
+    "cloud" => "Azure West Europe",
+    "datacenter" => null,
+    "subnet" => null,
+    "instance_type_low" => "small",
+    "instance_type_high" => "large",
+    "security_group" => null,
+    "ssh_key" => null,
+  }
+}
+end
+
+##############
+# CONDITIONS #
+##############
 condition "staging" do
   equals?($environment, "Staging")
 end
 
+
+##############
+# OUTPUTS    #
+##############
+output 'db_ip' do
+  label "Database VM IP"
+  category "General"
+  default_value @db1.public_ip_address
+  description "IP of the DB VM"
+end
 
 output 'application_url' do
   label "Application URL"
@@ -46,12 +133,52 @@ output 'haproxy_status' do
   description "HAProxy Status page showing connected app servers and their status"
 end
 
+##############
+# RESOURCES  #
+##############
+resource 'db1', type: 'server' do
+  name 'db1'  
+  cloud map( $map_cloud, $param_cloud, 'cloud' )
+  datacenter map( $map_cloud, $param_cloud, 'datacenter' )
+  subnets map( $map_cloud, $param_cloud, 'subnet' )
+  instance_type map( $map_cloud, $param_cloud,map( $profiles, $performance, 'db_instance_type'))
+  server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS)", revision: 5)
+  security_groups map( $map_cloud, $param_cloud, 'security_group' )
+  ssh_key map( $map_cloud, $param_cloud, 'ssh_key' )
+
+  inputs do {
+    'ADMIN_PASSWORD' => 'cred:WINDOWS_ADMIN_PASSWORD',
+    'BACKUP_FILE_NAME' => 'text:DotNetNuke.bak',
+    'BACKUP_VOLUME_SIZE' => 'text:10',
+    'DATA_VOLUME_SIZE' => 'text:10',
+    'DB_LINEAGE_NAME' => 'text:mitchgtest',
+    'DB_NAME' => 'text:DotNetNuke',
+    'DB_NEW_LOGIN_NAME' => 'cred:SQL_APPLICATION_USER',
+    'DB_NEW_LOGIN_PASSWORD' => 'cred:SQL_APPLICATION_PASSWORD',
+    'DNS_DOMAIN_NAME' => 'text:using.direct.ip.fake',
+    'DNS_ID' => 'text:14762727',
+    'DNS_PASSWORD' => 'cred:DNS_MADE_EASY_PASSWORD',
+    'DNS_SERVICE' => 'text:DNS Made Easy',
+    'DNS_USER' => 'cred:DNS_MADE_EASY_USER',
+    'LOGS_VOLUME_SIZE' => 'text:1',
+    'MASTER_KEY_PASSWORD' => 'cred:MitchG_DBADMIN_PASSWORD',
+    'REMOTE_STORAGE_ACCOUNT_ID' => 'cred:AWS_ACCESS_KEY_ID',
+    'REMOTE_STORAGE_ACCOUNT_PROVIDER' => 'text:Amazon_S3',
+    'REMOTE_STORAGE_ACCOUNT_SECRET' => 'cred:AWS_SECRET_ACCESS_KEY',
+    'REMOTE_STORAGE_CONTAINER' => 'text:mitchgbucket',
+    'SYS_WINDOWS_TZINFO' => 'text:Pacific Standard Time',
+  } end
+end
+
 resource 'app1', type: 'server' do
   name 'app1'
-  cloud_href '/api/clouds/6'
-  server_template_href '/api/server_templates/328395003'
-  security_group_hrefs "/api/clouds/6/security_groups/1CQTOHJ05DDMB"
-  ssh_key_href "/api/clouds/6/ssh_keys/26Q6416KSPUC2"
+  cloud map( $map_cloud, $param_cloud, 'cloud' )
+  datacenter map( $map_cloud, $param_cloud, 'datacenter' )
+  subnets map( $map_cloud, $param_cloud, 'subnet' )
+  instance_type map( $map_cloud, $param_cloud,map( $profiles, $performance, 'app_instance_type'))
+  server_template find("Microsoft IIS App Server (v13.5.0-LTS)", revision: 3)
+  security_groups map( $map_cloud, $param_cloud, 'security_group' )
+  ssh_key map( $map_cloud, $param_cloud, 'ssh_key' )
   inputs do {
     'ADMIN_PASSWORD' => 'cred:WINDOWS_ADMIN_PASSWORD',
     'OPT_CONNECTION_STRING_DB_NAME' => 'text:DotNetNuke',
@@ -72,54 +199,19 @@ resource 'app1', type: 'server' do
   } end
 end
 
-resource 'db1', type: 'server' do
-  name 'db1'
-  cloud_href '/api/clouds/6'
-  server_template_href '/api/server_templates/328390003'
-  security_group_hrefs "/api/clouds/6/security_groups/1CQTOHJ05DDMB"
-  ssh_key_href "/api/clouds/6/ssh_keys/26Q6416KSPUC2"
-  inputs do {
-    'ADMIN_PASSWORD' => 'cred:WINDOWS_ADMIN_PASSWORD',
-    'BACKUP_FILE_NAME' => 'text:DotNetNuke.bak',
-    'BACKUP_VOLUME_SIZE' => 'text:10',
-    'DATA_VOLUME_SIZE' => 'text:10',
-    'DB_LINEAGE_NAME' => 'text:ryanwintest',
-    'DB_NAME' => 'text:DotNetNuke',
-    'DB_NEW_LOGIN_NAME' => 'cred:SQL_APPLICATION_USER',
-    'DB_NEW_LOGIN_PASSWORD' => 'cred:SQL_APPLICATION_PASSWORD',
-    'DNS_DOMAIN_NAME' => 'text:ryan-master-windows.rightscaleuniversity.com',
-    'DNS_ID' => 'text:14762727',
-    'DNS_PASSWORD' => 'cred:DME_RIGHTSCALEU_PASS',
-    'DNS_SERVICE' => 'text:DNS Made Easy',
-    'DNS_USER' => 'cred:DME_RIGHTSCALEU_USER',
-    'LOGS_VOLUME_SIZE' => 'text:1',
-    'MASTER_KEY_PASSWORD' => 'cred:MASTER_KEY_PASSWORD',
-    'MIRROR_CERTIFICATE' => 'cred:michelle_SQL_MIRROR_CERTIFICATE',
-    'MIRROR_PRIVATE_KEY_PASSWORD' => 'cred:michelle_SQL_MIRROR_PRIVATE_KEY_PASSWORD',
-    'PRINCIPAL_CERTIFICATE' => 'cred:michelle_SQL_PRINCIPAL_CERTIFICATE',
-    'PRINCIPAL_PRIVATE_KEY_PASSWORD' => 'cred:michelle_SQL_PRINCIPAL_PRIVATE_KEY_PASSWORD',
-    'REMOTE_STORAGE_ACCOUNT_ID' => 'cred:AWS_ACCESS_KEY_ID',
-    'REMOTE_STORAGE_ACCOUNT_PROVIDER' => 'text:Amazon_S3',
-    'REMOTE_STORAGE_ACCOUNT_SECRET' => 'cred:AWS_SECRET_ACCESS_KEY',
-    'REMOTE_STORAGE_CONTAINER' => 'text:michelle-db',
-    'SYS_WINDOWS_TZINFO' => 'text:Pacific Standard Time',
-  } end
-end
+#resource 'db2', type: 'server' do
+#  name 'db2'
+#  like @db1
+#end
 
-resource 'db2', type: 'server' do
-  name 'db2'
-  like @db1
-
-end
-
-resource 'lb1', type: 'server' do
-  name 'lb1'
-  like @app1
-  server_template_href '/api/server_templates/336847003'
-  inputs do {
-
-  } end
-end
+#resource 'lb1', type: 'server' do
+#  name 'lb1'
+#  like @app1
+#  server_template find("Load Balancer with HAProxy (v13.5.5-LTS)", revision: 18)
+#  inputs do {
+#
+#  } end
+#end
 
 operation "provision" do
   description "Provisions the 3-tiers of a 3-tier app"
