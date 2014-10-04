@@ -265,7 +265,7 @@ resource 'server_array_1', type: 'server_array' do
     'OPT_CONNECTION_STRING_DB_SERVER_NAME' => 'env:Tier 3 - DB 1:PRIVATE_IP',
     'OPT_CONNECTION_STRING_DB_USER_ID' => 'cred:SQL_APPLICATION_USER',
     'OPT_CONNECTION_STRING_DB_USER_PASSWORD' => 'cred:SQL_APPLICATION_PASSWORD',
-    'OPT_CONNECTION_STRING_NAME' => 'text: SiteSqlServer',
+    'OPT_CONNECTION_STRING_NAME' => 'text:SiteSqlServer',
     'ADMIN_PASSWORD' => 'cred:WINDOWS_ADMIN_PASSWORD',
     'SYS_WINDOWS_TZINFO' => 'text:Pacific Standard Time',    
   } end
