@@ -35,25 +35,49 @@
 # No DNS needs to be set up - it passes the information around based on real-time IP assignments.
 #
 # PREREQUISITES:
-#   links to the given script calls down below in the enable operation need to be modified for the given account (I believe)
-#   database backup file on S3 - as per tutorial using the provided DotNetNuke.bak file
-#   application file on S3 - as per tutorial using the provided DotNetNuke.zip file
-#   SSH Key
-#   Security Group that is pretty wide open that covers all the VMs.
+#   Imported Server Templates:
+#     Load Balancer with HAProxy (v13.5.5-LTS), revision: 18 
+#     Database Manager for Microsoft SQL Server (13.5.1-LTS), revision: 5
+#     Microsoft IIS App Server (v13.5.0-LTS), revision: 3
+#       Cloned and alerts configured for scaling - needed until I can figure out how to do it in CAT for the array itself.
+#       Name it: Microsoft IIS App Server (v13.5.0-LTS) scaling
+#       Modify it:
+#         Create Alerts:
+#           Grow Alert:
+#             Name: Grow
+#             Condition: If cpu-idle < 30
+#             Vote to Grow with Tag: Tier 2 - IIS App Server
+#           Shrink Alert:
+#             Name: Shrink
+#             Condition: If cpu-idle > 50
+#             Vote to Shrink with Tag: Tier 2 - IIS App Server
+#   Links to the given script calls down below in the enable operation need to be modified for the given account (I believe)
+#   S3 Storage Setup
+#     Create a bucket and update the mapping if necessary.
+#     Store the database backup and application files:
+#       Database backup file on S3 - as per tutorial using the provided DotNetNuke.bak file
+#       Application file on S3 - as per tutorial using the provided DotNetNuke.zip file
+#   SSH Key - see mapping for proper names or to change accordingly.
+#   Security Group that is pretty wide open that covers all the VMs - see mapping for name.
 #     ports: 80, 8000, 1433, 3389
 #   The usual set of credentials as per the tutorial which are likely already available in the account.
 #     WINDOWS_ADMIN_PASSWORD - Password used by user, Administrator to login to the windows VMs.
 #     SQL_APPLICATION_USER - SQL database user with login privileges to the specified user database.
 #     SQL_APPLICATION_PASSWORD - Password for the SQL database user with login privileges to the specified user database.
-#     MASTER_KEY_PASSWORD - The password to encrypt the master key when it's created or decrypt it when opening an existing master key.
+#     DBADMIN_PASSWORD - The password to encrypt the master key when it's created or decrypt it when opening an existing master key.
+#
+# DEMO NOTES:
+#   Scaling:
+#     Login to the App instance and download http://download.sysinternals.com/files/CPUSTRES.zip
+#     Unzip file and run CPUSTRES.exe
+#     Enable two threads at maximum and that should load the CPU and cause scaling.
 
 
-
-name 'Consumer\'s Energy 3-tier LB-IIS-MS SQL stack demo'
+name 'ConsumersEnergy.com Dev Stack'
 rs_ca_ver 20131202
 short_description '![Consumer\'s Energy](http://www.consumersenergy.com/Images/logo_ce.png)
 
-Builds an HAproxy-IIS-MS-SQL 3-tier website architecture in the cloud using RightScale\'s ServerTemplates and a Cloud Application Template.'
+Builds an HAproxy-IIS-MS_SQL 3-tier website architecture in the cloud using RightScale\'s ServerTemplates and a Cloud Application Template.'
 
 long_description '![3tier application stack](https://selfservice-demo.s3.amazonaws.com/3tier.png)'
 
@@ -67,8 +91,8 @@ parameter "param_cloud" do
   label "Cloud" 
   type "string" 
   description "Cloud provider" 
-  allowed_values "AWS", "Azure"
-  default "AWS"
+  allowed_values "AWS - Hybrid Cloud", "AWS - CSE Sandbox", "Azure"
+  default "AWS - Hybrid Cloud"
 end
 #parameter "param_bucket_name" do 
 #  category "S3 info"
@@ -131,8 +155,10 @@ mapping "profiles" do {
     "app_instance_type" => "instance_type_high"  } }
 end
 
+# Not really happy with this approach of throwing the script hrefs in the cloud map since they are account mappings.
+# But for now, will work.
 mapping "map_cloud" do {
-  "AWS" => {
+  "AWS - CSE Sandbox" => {
     "cloud" => "us-west-1",
     "datacenter" => null,
     "subnet" => null,
@@ -140,15 +166,36 @@ mapping "map_cloud" do {
     "instance_type_high" => "m1.large",
     "security_group" => "CE_default_SecGrp",
     "ssh_key" => "MitchG_sshKey_2",
+    "s3_bucket" => "consumers-energy",
+    "restore_db_script_href" => "524831004",
+    "create_db_login_script_href" => "524829004",
+    "restart_iis_script_href" => "524965004",
   },
-    "Azure" => {
-    "cloud" => "Azure West Europe",
+  "AWS - Hybrid Cloud" => {
+    "cloud" => "us-west-1",
+    "datacenter" => null,
+    "subnet" => null,
+    "instance_type_low" => "m1.small",
+    "instance_type_high" => "m1.large",
+    "security_group" => "IIS_3tier_default_SecGrp",
+    "ssh_key" => "CE_sshkey_HybridCloud",
+    "s3_bucket" => "iis-3tier",
+    "restore_db_script_href" => "493424003",
+    "create_db_login_script_href" => "493420003",
+    "restart_iis_script_href" => "527791003",
+  },
+  "Azure - Hybrid Cloud" => {
+    "cloud" => "Azure East US",
     "datacenter" => null,
     "subnet" => null,
     "instance_type_low" => "small",
     "instance_type_high" => "large",
     "security_group" => null,
     "ssh_key" => null,
+    "s3_bucket" => "iis-3tier",
+    "restore_db_script_href" => "493424003",
+    "create_db_login_script_href" => "493420003",
+    "restart_iis_script_href" => "527791003",
   }
 }
 end
@@ -234,7 +281,7 @@ resource 'db_1', type: 'server' do
       'REMOTE_STORAGE_ACCOUNT_ID' => 'cred:AWS_ACCESS_KEY_ID',
       'REMOTE_STORAGE_ACCOUNT_PROVIDER' => 'text:Amazon_S3',
       'REMOTE_STORAGE_ACCOUNT_SECRET' => 'cred:AWS_SECRET_ACCESS_KEY',
-      'REMOTE_STORAGE_CONTAINER' => 'text:consumers-energy',
+      'REMOTE_STORAGE_CONTAINER' => join(['text:', map( $map_cloud, $param_cloud, 's3_bucket' )]),
       'SYS_WINDOWS_TZINFO' => 'text:Pacific Standard Time',
   } end
 end
@@ -252,14 +299,15 @@ resource 'server_array_1', type: 'server_array' do
   datacenter map( $map_cloud, $param_cloud, 'datacenter' )
   subnets map( $map_cloud, $param_cloud, 'subnet' )
   instance_type map( $map_cloud, $param_cloud,map( $profiles, $performance, 'db_instance_type'))
-  server_template find('Microsoft IIS App Server (v13.5.0-LTS)', revision: 3)
+  #server_template find('Microsoft IIS App Server (v13.5.0-LTS)', revision: 3)
+  server_template find('Microsoft IIS App Server (v13.5.0-LTS) scaling')
   security_groups map( $map_cloud, $param_cloud, 'security_group' )
   ssh_key map( $map_cloud, $param_cloud, 'ssh_key' )
   inputs do {
     'REMOTE_STORAGE_ACCOUNT_ID_APP' => 'cred:AWS_ACCESS_KEY_ID',
     'REMOTE_STORAGE_ACCOUNT_PROVIDER_APP' => 'text:Amazon_S3',
     'REMOTE_STORAGE_ACCOUNT_SECRET_APP' => 'cred:AWS_SECRET_ACCESS_KEY',
-    'REMOTE_STORAGE_CONTAINER_APP' => 'text:consumers-energy',
+    'REMOTE_STORAGE_CONTAINER_APP' => join(['text:', map( $map_cloud, $param_cloud, 's3_bucket' )]),
     'ZIP_FILE_NAME' => 'text:DotNetNuke.zip',
     'OPT_CONNECTION_STRING_DB_NAME' => 'text:DotNetNuke',
     'OPT_CONNECTION_STRING_DB_SERVER_NAME' => 'env:Tier 3 - DB 1:PRIVATE_IP',
@@ -277,7 +325,7 @@ resource 'server_array_1', type: 'server_array' do
       'max_count'            => $array_max_size
     },
     'pacing' => {
-      'resize_calm_time'     => 12,
+      'resize_calm_time'     => 20, 
       'resize_down_by'       => 1,
       'resize_up_by'         => 1
     },
@@ -413,20 +461,27 @@ end
 #
 
 #define enable_application(@db_1, @db_2, $high_availability) do
-define enable_application(@db_1, @server_array_1, $high_availability) do
+define enable_application(@db_1, @server_array_1, $high_availability, $map_cloud, $param_cloud) do
+  
+  $restore_db_script = map( $map_cloud, $param_cloud, 'restore_db_script_href' )
+  $create_db_login_script = map( $map_cloud, $param_cloud, 'create_db_login_script_href' )
+  $restart_iis_script = map( $map_cloud, $param_cloud, 'restart_iis_script_href' )
   
   task_label("Restoring DB from backup file.")
   # call run_recipe(@db_1, "DB SQLS Restore database from local disk / Remote Storage (v13.5.0-LTS)")
-  call run_script(@db_1, "/api/right_scripts/524831004")
+  # call run_script(@db_1, "/api/right_scripts/524831004")
+  call run_script(@db_1,  join(["/api/right_scripts/", $restore_db_script]))
 
   task_label("Creating App login to the DB.")
   # call run_recipe(@db_1, "DB SQLS Create login (v13.5.0-LTS)")
-  call run_script(@db_1, "/api/right_scripts/524829004")
+  # call run_script(@db_1, "/api/right_scripts/524829004")
+  call run_script(@db_1,  join(["/api/right_scripts/", $create_db_login_script]))
 
   task_label("Restarting IIS so it can connect to DB.")
   # call run_recipe(@server_array_1, "IIS Restart application (v13.5.0-LTS)")
-  call multi_run_script(@server_array_1, "/api/right_scripts/524965004")
-  
+  # call multi_run_script(@server_array_1, "/api/right_scripts/524965004")
+  call multi_run_script(@server_array_1,  join(["/api/right_scripts/", $restart_iis_script]))
+
 # Leaving this logic in here for future reference
 #  if $high_availability
 #    sleep(300)
