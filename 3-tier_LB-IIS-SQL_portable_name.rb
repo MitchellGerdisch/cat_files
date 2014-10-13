@@ -73,13 +73,9 @@
 #     Enable two threads at maximum and that should load the CPU and cause scaling.
 
 
-name 'ConsumersEnergy.com Dev Stack'
+name 'IIS-SQL Dev Stack'
 rs_ca_ver 20131202
-short_description '![Consumer\'s Energy](http://www.consumersenergy.com/Images/logo_ce.png)
-
-Builds an HAproxy-IIS-MS_SQL 3-tier website architecture in the cloud using RightScale\'s ServerTemplates and a Cloud Application Template.'
-
-long_description '![3tier application stack](https://selfservice-demo.s3.amazonaws.com/3tier.png)'
+short_description 'Builds an HAproxy-IIS-MS_SQL 3-tier website architecture in the cloud using RightScale\'s ServerTemplates and a Cloud Application Template.'
 
 
 ##############
