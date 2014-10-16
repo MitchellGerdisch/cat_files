@@ -75,8 +75,8 @@
 
 name 'IIS-SQL Dev Stack'
 rs_ca_ver 20131202
-short_description 'Builds an HAproxy-IIS-MS_SQL 3-tier website architecture in the cloud using RightScale\'s ServerTemplates and a Cloud Application Template.'
-
+short_description '![Windows](http://www.cscopestudios.com/images/winhosting.jpg)
+Builds an HAproxy-IIS-MS_SQL 3-tier website architecture in the cloud using RightScale\'s ServerTemplates and a Cloud Application Template.'
 
 ##############
 # PARAMETERS #

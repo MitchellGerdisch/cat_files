@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<project name="CAT" default="main" basedir=".">
+  <!-- Sets variables which can later be used. -->
+  <!-- The value of a property is accessed via ${} -->
+  <property name="include.dir" location="../includes" />
+  <property name="source.dir" location="." />
+  <property name="target.file" location="./bigcat.rb" />
+
+  <!-- Deletes the existing build, docs and dist directory-->
+  <target name="CAT">
+	<concat destfile="${target.file}">
+    	<fileset dir="${source.dir}"
+         	includes="*.rb" />
+		<fileset dir="${include.dir}"
+			includes="*" />
+	</concat>
+  </target>
+  
+  <target name="main" depends="CAT">
+    <description>Main target</description>
+  </target>
+
+</project> 
