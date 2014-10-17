@@ -34,10 +34,6 @@ define multi_run_script(@target, $right_script_href) do
   end
 end
 
-define log_this($message) do
-  rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: $message})
-end
-
 ####
 # Author: Ryan Geyer
 ###
@@ -57,6 +53,11 @@ end
 # 
 # Author: Ryan Geyer
 ####
+
+define log_this($message) do
+  rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: $message})
+end
+  
 define log($message, $notify) do
   rs.audit_entries.create(notify: $notify, audit_entry: {auditee_href: @@deployment.href, summary: $message})
 end
