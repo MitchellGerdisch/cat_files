@@ -208,36 +208,36 @@ end
 
 
 define enable_server(@your_server) do
-  call log_this("At beginning of enable_server")
+  call log_this("MRG MRG MRG At beginning of enable_server")
   task_label("MRG_ENABLE_TASK-LABEL: Pretending to do something to enable your server for you.")
-  call log_this("after task_label")
-  sub task_name: enable_sub do
-    call log_this("at beginning of enable sub")
-    call log_title("MRG_ENABLE_LOG_TITLE")
-    call log_info("MRG_ENABLE_LOG_INFO: Just putting a log info message.")
-    call log_error("MRG_ENABLE_LOG_ERROR: This is what a log error looks like.")
-    call log_this("end of enable sub")
+  call log_this("MRG MRG MRG after task_label")
+  sub task_name: "Enable Server Sub task" do
+    call log_this("MRG MRG MRG at beginning of enable sub")
+#    log_title("MRG_ENABLE_LOG_TITLE")
+#    log_info("MRG_ENABLE_LOG_INFO: Just putting a log info message.")
+#    log_error("MRG_ENABLE_LOG_ERROR: This is what a log error looks like.")
+    call log_this("MRG MRG MRG end of enable sub")
   end
-  call log_this("end of enable_server")
+  call log_this("MRG MRG MRG end of enable_server")
 end
 
 define do_manual_sub_task(@your_server) do
-  call log_this("beginning of do_manual_sub_task")
+  call log_this("MRG MRG MRG beginning of do_manual_sub_task")
   task_label("MRG_MANUAL_TASK-LABEL: Pretending to do something when doing a manual task")
-  sub task_name: manual_task_sub do
-    call log_this("beginning of manual_task_sub")
-    log_title("MRG_MANUAL_LOG_TITLE")
-    log_info("MRG_MANUAL_LOG_INFO: Just putting a log info message.")
-    log_error("MRG_MANUAL_LOG_ERROR: This is what a log error looks like.")
+  sub task_name: "Do manual_sub_task Sub task" do
+    call log_this("MRG MRG MRG beginning of manual_task_sub")
+#    log_title("MRG_MANUAL_LOG_TITLE")
+#    log_info("MRG_MANUAL_LOG_INFO: Just putting a log info message.")
+#    log_error("MRG_MANUAL_LOG_ERROR: This is what a log error looks like.")
   end
-  call log_this("end of do_manual_sub_task")
+  call log_this("MRG MRG MRG end of do_manual_sub_task")
 end
 
 define do_manual_nosub_task(@your_server) do
-  call log_this("beginning of do_manual_no_sub_task")
-  log_title("MRG_MANUAL_NOSUBLOG_TITLE")
-  log_info("MRG_MANUAL_NOSUBLOG_LOG_INFO: Just putting a log info message.")
-  log_error("MRG_MANUAL_NOSUBLOG_LOG_ERROR: This is what a log error looks like.")
-  call log_this("end of do_manual_no_sub_task")
+  call log_this("MRG MRG MRG beginning of do_manual_no_sub_task")
+#  log_title("MRG_MANUAL_NOSUBLOG_TITLE")
+#  log_info("MRG_MANUAL_NOSUBLOG_LOG_INFO: Just putting a log info message.")
+#  log_error("MRG_MANUAL_NOSUBLOG_LOG_ERROR: This is what a log error looks like.")
+  call log_this("MRG MRG MRG end of do_manual_no_sub_task")
 end
   

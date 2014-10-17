@@ -211,7 +211,7 @@ define enable_server(@your_server) do
   call log_this("At beginning of enable_server")
   task_label("MRG_ENABLE_TASK-LABEL: Pretending to do something to enable your server for you.")
   call log_this("after task_label")
-  sub task_name: enable_sub do
+  sub task_name: "Enable Server Sub task" do
     call log_this("at beginning of enable sub")
     call log_title("MRG_ENABLE_LOG_TITLE")
     call log_info("MRG_ENABLE_LOG_INFO: Just putting a log info message.")
@@ -224,7 +224,7 @@ end
 define do_manual_sub_task(@your_server) do
   call log_this("beginning of do_manual_sub_task")
   task_label("MRG_MANUAL_TASK-LABEL: Pretending to do something when doing a manual task")
-  sub task_name: manual_task_sub do
+  sub task_name: "Do manual_sub_task Sub task" do
     call log_this("beginning of manual_task_sub")
     log_title("MRG_MANUAL_LOG_TITLE")
     log_info("MRG_MANUAL_LOG_INFO: Just putting a log info message.")

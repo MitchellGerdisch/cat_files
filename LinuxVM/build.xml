@@ -6,8 +6,16 @@
   <property name="source.dir" location="." />
   <property name="target.file" location="./bigcat.rb" />
 
-  <!-- Deletes the existing build, docs and dist directory-->
+  <!-- Builds a single file (name is based on target.file above) consisting of:
+  		- All .rb files in this directory, and then 
+  		- All files (of any type) in the includes directory a layer above.
+  -->
+  <!-- TO-DOs:
+  		- Multi-stage build which uses regexp capability to insert, say, mappings into the main .rb file and then do the final concat
+  			to produce the final bigcat file.
+  -->
   <target name="CAT">
+  	<delete file="${target.file}"/>
 	<concat destfile="${target.file}">
     	<fileset dir="${source.dir}"
          	includes="*.rb" />
