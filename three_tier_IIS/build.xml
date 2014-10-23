@@ -4,7 +4,8 @@
   <!-- The value of a property is accessed via ${} -->
   <property name="include.dir" location="../includes" />
   <property name="source.dir" location="." />
-  <property name="target.file" location="./bigcat.rb" />
+  <property name="source.files" value="3_tier_HaProxy-IIS-SQL.rb" />
+
 
   <!-- Builds a single file (name is based on target.file above) consisting of:
   		- All .rb files in this directory, and then 
@@ -15,10 +16,11 @@
   			to produce the final bigcat file.
   -->
   <target name="HybridCloud">
+    <property name="target.file" location="./three_tier_IIS_HybridCloud.rb" />
   	<delete file="${target.file}"/>
 	<concat destfile="${target.file}">
     	<fileset dir="${source.dir}"
-         	includes="*.rb" />
+         	includes="${source.files}" />
 		<fileset dir="${include.dir}"
 			includes="*" />
 	</concat>
@@ -30,10 +32,11 @@
   </target>
 	
   <target name="Sandbox">
+    <property name="target.file" location="./three_tier_IIS_CseSandbox.rb" />
   	<delete file="${target.file}"/>
 	<concat destfile="${target.file}">
     	<fileset dir="${source.dir}"
-         	includes="*.rb" />
+         	includes="${source.files}" />
 		<fileset dir="${include.dir}"
 			includes="*" />
 	</concat>
