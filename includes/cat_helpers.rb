@@ -57,7 +57,10 @@ end
 define log_this($message) do
   rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: $message})
 end
-  
+ 
+###
+# $notify acceptable values: None|Notification|Security|Error
+###
 define log($message, $notify) do
   rs.audit_entries.create(notify: $notify, audit_entry: {auditee_href: @@deployment.href, summary: $message})
 end

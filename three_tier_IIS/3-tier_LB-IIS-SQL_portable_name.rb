@@ -1,4 +1,4 @@
-#
+#x
 #The MIT License (MIT)
 #
 #Copyright (c) 2014 Bruno Ciscato, Ryan O'Leary, Mitch Gerdisch
@@ -112,6 +112,7 @@ parameter "array_min_size" do
   description "Minimum number of servers in the array"
   default "1"
 end
+
 parameter "array_max_size" do
   category "Application Server Array"
   label "Array Maximum Size"
@@ -191,23 +192,20 @@ mapping "map_cloud" do {
 }
 end
 
-
-#mapping "profiles" do { 
-#  "low" => {   
-#    "db_instance_type" => "instance_type_low",   
-#    "app_instance_type" => "instance_type_low"  }, 
-#  "high" => {   
-#    "db_instance_type" => "instance_type_high",   
-#    "app_instance_type" => "instance_type_high"  } }
-#end
-
 # TO-DO: Get account info from the environment and use the mapping accordingly.
 # REAL TO-DO: Once API support is avaiable in CATs, create the security groups, etc in real-time.
-$$account="CSE_Sandbox"
+# map($map_current_account, 'current_account_name', 'current_account')
+mapping "map_current_account" do {
+  "current_account_name" => {
+    "current_account" => 'CSE Sandbox',
+  },
+}
+end
+
 mapping "map_account" do {
   "CSE Sandbox" => {
     "security_group" => "CE_default_SecGrp",
-    "ssh_key" => "MitchG_sshKey_2",
+    "ssh_key" => "default",
     "s3_bucket" => "consumers-energy",
     "restore_db_script_href" => "524831004",
     "create_db_login_script_href" => "524829004",
@@ -215,7 +213,7 @@ mapping "map_account" do {
   },
   "Hybrid Cloud" => {
     "security_group" => "IIS_3tier_default_SecGrp",
-    "ssh_key" => "CE_sshkey_HybridCloud",
+    "ssh_key" => "default",
     "s3_bucket" => "iis-3tier",
     "restore_db_script_href" => "493424003",
     "create_db_login_script_href" => "493420003",
@@ -254,11 +252,11 @@ end
 
 resource 'lb_1', type: 'server' do
   name 'Tier 1 - LB 1'
-  cloud map( $map_cloud, $param_cloud, 'cloud' )
+  cloud map( $map_cloud, $param_location, 'cloud' )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,'provider'), $param_performance)
   server_template find('Load Balancer with HAProxy (v13.5.5-LTS)', revision: 18)
-  security_groups map( $map_account, $$account, 'security_group' )
-  ssh_key map( $map_account, $$account, 'ssh_key' )
+  security_groups map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 'security_group' )
+  ssh_key map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 'ssh_key' )
   inputs do {
     'lb/session_stickiness' => 'text:false',   
   } end
@@ -266,11 +264,11 @@ end
 
 resource 'db_1', type: 'server' do
   name 'Tier 3 - DB 1'
-  cloud map( $map_cloud, $param_cloud, 'cloud' )
+  cloud map( $map_cloud, $param_location, 'cloud' )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,'provider'), $param_performance)
   server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS)", revision: 5)
-  security_groups map( $map_account, $$account, 'security_group' )
-  ssh_key map( $map_account, $$account, 'ssh_key' )
+  security_groups map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 'security_group' )
+  ssh_key map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 'ssh_key' )
     inputs do {
       'ADMIN_PASSWORD' => 'cred:WINDOWS_ADMIN_PASSWORD',
       'BACKUP_FILE_NAME' => 'text:DotNetNuke.bak',
@@ -290,7 +288,7 @@ resource 'db_1', type: 'server' do
       'REMOTE_STORAGE_ACCOUNT_ID' => 'cred:AWS_ACCESS_KEY_ID',
       'REMOTE_STORAGE_ACCOUNT_PROVIDER' => 'text:Amazon_S3',
       'REMOTE_STORAGE_ACCOUNT_SECRET' => 'cred:AWS_SECRET_ACCESS_KEY',
-      'REMOTE_STORAGE_CONTAINER' => join(['text:', map( $map_account, $$account, 's3_bucket' )]),
+      'REMOTE_STORAGE_CONTAINER' => join(['text:', map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 's3_bucket' )]),
       'SYS_WINDOWS_TZINFO' => 'text:Pacific Standard Time',
   } end
 end
@@ -298,17 +296,17 @@ end
 
 resource 'server_array_1', type: 'server_array' do
   name 'Tier 2 - IIS App Servers'
-  cloud map( $map_cloud, $param_cloud, 'cloud' )
+  cloud map( $map_cloud, $param_location, 'cloud' )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,'provider'), $param_performance)
   #server_template find('Microsoft IIS App Server (v13.5.0-LTS)', revision: 3)
   server_template find('Microsoft IIS App Server (v13.5.0-LTS) scaling')
-  security_groups map( $map_cloud, $param_cloud, 'security_group' )
-  ssh_key map( $map_cloud, $param_cloud, 'ssh_key' )
+  security_groups map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 'security_group' )
+  ssh_key map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 'ssh_key' )
   inputs do {
     'REMOTE_STORAGE_ACCOUNT_ID_APP' => 'cred:AWS_ACCESS_KEY_ID',
     'REMOTE_STORAGE_ACCOUNT_PROVIDER_APP' => 'text:Amazon_S3',
     'REMOTE_STORAGE_ACCOUNT_SECRET_APP' => 'cred:AWS_SECRET_ACCESS_KEY',
-    'REMOTE_STORAGE_CONTAINER_APP' => join(['text:', map( $map_account, $$account, 's3_bucket' )]),
+    'REMOTE_STORAGE_CONTAINER_APP' => join(['text:', map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 's3_bucket' )]),
     'ZIP_FILE_NAME' => 'text:DotNetNuke.zip',
     'OPT_CONNECTION_STRING_DB_NAME' => 'text:DotNetNuke',
     'OPT_CONNECTION_STRING_DB_SERVER_NAME' => 'env:Tier 3 - DB 1:PRIVATE_IP',
@@ -338,9 +336,9 @@ resource 'server_array_1', type: 'server_array' do
 end
 
 
-##############
-# Operations #
-##############
+###############
+## Operations #
+###############
 
 # executes automatically
 operation "launch" do
@@ -422,7 +420,7 @@ define launch_concurrent(@lb_1, @db_1, @server_array_1) return @lb_1, @db_1, @se
 end
 
 define handle_provision_error($count) do
-  call log("Handling provision error: " + $_error["message"])
+  call log("Handling provision error: " + $_error["message"], "Notification")
   if $count < 5 
     $_error_behavior = 'retry'
   end
@@ -431,11 +429,11 @@ end
 # Enable operation
 #
 
-define enable_application(@db_1, @server_array_1, $map_cloud, $param_cloud) do
+define enable_application(@db_1, @server_array_1, $map_cloud, $param_location) do
   
-  $restore_db_script = map( $map_account, $$account, 'restore_db_script_href' )
-  $create_db_login_script = map( $map_account, $$account, 'create_db_login_script_href' )
-  $restart_iis_script = map( $map_account, $$account, 'restart_iis_script_href' )
+  $restore_db_script = map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 'restore_db_script_href' )
+  $create_db_login_script = map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 'create_db_login_script_href' )
+  $restart_iis_script = map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 'restart_iis_script_href' )
   
   task_label("Restoring DB from backup file.")
   # call run_recipe(@db_1, "DB SQLS Restore database from local disk / Remote Storage (v13.5.0-LTS)")
