@@ -1,4 +1,4 @@
-#x
+#
 #The MIT License (MIT)
 #
 #Copyright (c) 2014 Bruno Ciscato, Ryan O'Leary, Mitch Gerdisch
@@ -198,7 +198,7 @@ end
 # _CSE Sandbox is replacd by the Ant build file with the applicable account name based on build target.
 mapping "map_current_account" do {
   "current_account_name" => {
-    "current_account" => '__ACCOUNT_NAME__',
+    "current_account" => "CSE Sandbox",
   },
 }
 end
@@ -430,11 +430,12 @@ end
 # Enable operation
 #
 
-define enable_application(@db_1, @server_array_1, $map_cloud, $param_location) do
+define enable_application(@db_1, @server_array_1, $map_current_account, $map_account) do
   
-  $restore_db_script = map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 'restore_db_script_href' )
-  $create_db_login_script = map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 'create_db_login_script_href' )
-  $restart_iis_script = map( $map_account, map($map_current_account, 'current_account_name', 'current_account'), 'restart_iis_script_href' )
+  $cur_account = map($map_current_account, 'current_account_name', 'current_account')
+  $restore_db_script = map( $map_account, $cur_account, 'restore_db_script_href' )
+  $create_db_login_script = map( $map_account, $cur_account, 'create_db_login_script_href' )
+  $restart_iis_script = map( $map_account, $cur_account, 'restart_iis_script_href' )
   
   task_label("Restoring DB from backup file.")
   # call run_recipe(@db_1, "DB SQLS Restore database from local disk / Remote Storage (v13.5.0-LTS)")

@@ -24,7 +24,9 @@
 	</concat>
   	<replaceregexp file="${target.file}"
   		match="__ACCOUNT_NAME__"
-  		replace="Hybrid Cloud" />
+  		replace="Hybrid Cloud" 
+  		flags="g"
+  	/>
   </target>
 	
   <target name="Sandbox">
@@ -37,7 +39,9 @@
 	</concat>
   	<replaceregexp file="${target.file}"
   		match="__ACCOUNT_NAME__"
-  		replace="CSE Sandbox" />
+  		replace="CSE Sandbox"
+  		flags="g"
+	/>
   </target>
   
   <target name="main" depends="HybridCloud">
