@@ -179,7 +179,7 @@ mapping "map_cloud" do {
   },
   "AWS-USA" => {
     "provider" => "AWS",
-    "cloud" => "us-east-1",
+    "cloud" => "us-west-1",
     "security_group" => 'default',
     "ssh_key" => "default",
   },
@@ -195,9 +195,10 @@ end
 # TO-DO: Get account info from the environment and use the mapping accordingly.
 # REAL TO-DO: Once API support is avaiable in CATs, create the security groups, etc in real-time.
 # map($map_current_account, 'current_account_name', 'current_account')
+# _CSE Sandbox is replacd by the Ant build file with the applicable account name based on build target.
 mapping "map_current_account" do {
   "current_account_name" => {
-    "current_account" => 'CSE Sandbox',
+    "current_account" => '__ACCOUNT_NAME__',
   },
 }
 end
@@ -205,7 +206,7 @@ end
 mapping "map_account" do {
   "CSE Sandbox" => {
     "security_group" => "CE_default_SecGrp",
-    "ssh_key" => "MitchG_sshKey_2",
+    "ssh_key" => "default",
     "s3_bucket" => "consumers-energy",
     "restore_db_script_href" => "524831004",
     "create_db_login_script_href" => "524829004",
@@ -213,7 +214,7 @@ mapping "map_account" do {
   },
   "Hybrid Cloud" => {
     "security_group" => "IIS_3tier_default_SecGrp",
-    "ssh_key" => "CE_sshkey_HybridCloud",
+    "ssh_key" => "default",
     "s3_bucket" => "iis-3tier",
     "restore_db_script_href" => "493424003",
     "create_db_login_script_href" => "493420003",
@@ -295,7 +296,7 @@ end
 
 
 resource 'server_array_1', type: 'server_array' do
-  name 'Tier 2 - IIS App Servers'
+  name 'Tier 2 - IIS App Server'
   cloud map( $map_cloud, $param_location, 'cloud' )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,'provider'), $param_performance)
   #server_template find('Microsoft IIS App Server (v13.5.0-LTS)', revision: 3)

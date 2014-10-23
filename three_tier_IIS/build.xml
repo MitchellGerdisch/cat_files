@@ -14,7 +14,7 @@
   		- Multi-stage build which uses regexp capability to insert, say, mappings into the main .rb file and then do the final concat
   			to produce the final bigcat file.
   -->
-  <target name="CAT">
+  <target name="HybridCloud">
   	<delete file="${target.file}"/>
 	<concat destfile="${target.file}">
     	<fileset dir="${source.dir}"
@@ -22,9 +22,25 @@
 		<fileset dir="${include.dir}"
 			includes="*" />
 	</concat>
+  	<replaceregexp file="${target.file}"
+  		match="__ACCOUNT_NAME__"
+  		replace="Hybrid Cloud" />
+  </target>
+	
+  <target name="Sandbox">
+  	<delete file="${target.file}"/>
+	<concat destfile="${target.file}">
+    	<fileset dir="${source.dir}"
+         	includes="*.rb" />
+		<fileset dir="${include.dir}"
+			includes="*" />
+	</concat>
+  	<replaceregexp file="${target.file}"
+  		match="__ACCOUNT_NAME__"
+  		replace="CSE Sandbox" />
   </target>
   
-  <target name="main" depends="CAT">
+  <target name="main" depends="HybridCloud">
     <description>Main target</description>
   </target>
 
