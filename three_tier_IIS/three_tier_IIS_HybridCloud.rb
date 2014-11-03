@@ -5,7 +5,8 @@
 # In lb, comment out security_group and focus work on getting ssh_key to work.
 #
 # az_test_1: Just verify that everything but ssh_key commented out still works - DONE
-# az_test_2: Change map_account to return null instead of ssh_key name and test -
+# az_test_2: Change map_account to return null instead of ssh_key name and test - FOUND BUG
+# az_test_3: test switch logic without retrunning null to see if the basic stuff works
 #
 # set up mapping that returns null when deploying to Azure.
 
@@ -226,7 +227,7 @@ mapping "map_account" do {
   },
   "Hybrid Cloud" => {
     "security_group" => "IIS_3tier_default_SecGrp",
-    "ssh_key" => null,
+    "ssh_key" => "default",
     "s3_bucket" => "iis-3tier",
     "restore_db_script_href" => "493424003",
     "create_db_login_script_href" => "493420003",
@@ -234,6 +235,7 @@ mapping "map_account" do {
   },
 }
 end
+
 
 ##############
 # CONDITIONS #
@@ -269,7 +271,9 @@ resource "lb_1", type: "server" do
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
   server_template find("Load Balancer with HAProxy (v13.5.5-LTS)", revision: 18)
 #  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
-  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
+#  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
+  ssh_key switch(equals?(map($map_cloud, $param_location,"provider"), "AWS"), map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
+  
   inputs do {
     "lb/session_stickiness" => "text:false",   
   } end
