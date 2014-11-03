@@ -1,4 +1,16 @@
 #
+### GAME PLAN ####
+# test against Azure only
+# comment out ssh_key and security_group lines in all resources but lb
+# In lb, comment out security_group and focus work on getting ssh_key to work.
+#
+# az_test_1: Just verify that everything but ssh_key commented out still works - DONE
+# az_test_2: Change map_account to return null instead of ssh_key name and test -
+#
+# set up mapping that returns null when deploying to Azure.
+
+
+
 #The MIT License (MIT)
 #
 #Copyright (c) 2014 Bruno Ciscato, Ryan O'Leary, Mitch Gerdisch
@@ -69,7 +81,7 @@
 #     Enable two threads at maximum and that should load the CPU and cause scaling.
 
 
-name "IIS-SQL Dev Stack"
+name "IIS-SQL Dev Stack - Testing Nulls"
 rs_ca_ver 20131202
 short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)
 Builds an HAproxy-IIS-MS_SQL 3-tier website architecture in the cloud using RightScale\'s ServerTemplates and a Cloud Application Template."
@@ -214,7 +226,7 @@ mapping "map_account" do {
   },
   "Hybrid Cloud" => {
     "security_group" => "IIS_3tier_default_SecGrp",
-    "ssh_key" => "default",
+    "ssh_key" => null,
     "s3_bucket" => "iis-3tier",
     "restore_db_script_href" => "493424003",
     "create_db_login_script_href" => "493420003",
@@ -256,7 +268,7 @@ resource "lb_1", type: "server" do
   cloud map( $map_cloud, $param_location, "cloud" )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
   server_template find("Load Balancer with HAProxy (v13.5.5-LTS)", revision: 18)
-  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
+#  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
   ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
   inputs do {
     "lb/session_stickiness" => "text:false",   
@@ -268,8 +280,8 @@ resource "db_1", type: "server" do
   cloud map( $map_cloud, $param_location, "cloud" )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
   server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS)", revision: 5)
-  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
-  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
+#  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
+#  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
     inputs do {
       "ADMIN_PASSWORD" => "cred:WINDOWS_ADMIN_PASSWORD",
       "BACKUP_FILE_NAME" => "text:DotNetNuke.bak",
@@ -301,8 +313,8 @@ resource "server_array_1", type: "server_array" do
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
   #server_template find("Microsoft IIS App Server (v13.5.0-LTS)", revision: 3)
   server_template find("Microsoft IIS App Server (v13.5.0-LTS) scaling")
-  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
-  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
+#  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
+#  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
   inputs do {
     "REMOTE_STORAGE_ACCOUNT_ID_APP" => "cred:AWS_ACCESS_KEY_ID",
     "REMOTE_STORAGE_ACCOUNT_PROVIDER_APP" => "text:Amazon_S3",
