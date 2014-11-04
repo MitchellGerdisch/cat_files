@@ -214,6 +214,11 @@ end
 # CONDITIONS #
 ##############
 
+# Checks if being deployed in AWS.
+# This is used to decide whether or not to pass an SSH key and security group when creating the servers.
+condition "inAWS" do
+  equals?(map($map_cloud, $param_location,"provider"), "AWS")
+end
 
 
 ##############
@@ -245,9 +250,8 @@ resource "lb_1", type: "server" do
   server_template find("Load Balancer with HAProxy (v13.5.5-LTS)", revision: 18)
 #  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
 #  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
-  ssh_key switch(equals?(map($map_cloud, $param_location,"provider"), "AWS"), map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
-  security_groups switch(equals?(map($map_cloud, $param_location,"provider"), "AWS"), map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
-  
+  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
+  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
     "lb/session_stickiness" => "text:false",   
   } end
@@ -260,8 +264,8 @@ resource "db_1", type: "server" do
   server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS)", revision: 5)
 #  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
 #  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
-  ssh_key switch(equals?(map($map_cloud, $param_location,"provider"), "AWS"), map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
-  security_groups switch(equals?(map($map_cloud, $param_location,"provider"), "AWS"), map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
+  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
+  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
     inputs do {
       "ADMIN_PASSWORD" => "cred:WINDOWS_ADMIN_PASSWORD",
       "BACKUP_FILE_NAME" => "text:DotNetNuke.bak",
@@ -295,8 +299,8 @@ resource "server_array_1", type: "server_array" do
   server_template find("Microsoft IIS App Server (v13.5.0-LTS) scaling")
 #  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
 #  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
-  ssh_key switch(equals?(map($map_cloud, $param_location,"provider"), "AWS"), map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
-  security_groups switch(equals?(map($map_cloud, $param_location,"provider"), "AWS"), map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
+  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
+  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
     "REMOTE_STORAGE_ACCOUNT_ID_APP" => "cred:AWS_ACCESS_KEY_ID",
     "REMOTE_STORAGE_ACCOUNT_PROVIDER_APP" => "text:Amazon_S3",
