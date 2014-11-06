@@ -70,8 +70,9 @@ parameter "param_role" do
   label "Chef Role(s)" 
   type "string" 
   description "Chef role(s) to apply to the server." 
-  allowed_pattern "[A-Za-z0-9][A-Za-z0-9-_.]*"
-  default "NOT_CURRENTLY_SUPPORTED"
+#  allowed_pattern "[A-Za-z0-9][A-Za-z0-9-_.]*"
+  allowed_values "turner", "hooch"
+  default "hooch"
 end
 
 
@@ -82,9 +83,9 @@ end
 
 mapping "map_instance_type" do {
   "AWS" => {
-    "low" => "c3.large",  
-    "medium" => "c3.xlarge", # 4 CPUs x 7GB
-    "high" => "c3.2xlarge", # 8 CPUs x 15GB
+    "low" => "m1.medium",  
+    "medium" => "c3.large", 
+    "high" => "c3.xlarge", 
   },
   "RS" => {
     # These choices are driven by what is configured for RS London cloud in RS.
@@ -147,9 +148,9 @@ mapping "map_account" do {
   "CSE Sandbox" => {
     "security_group" => "default",
     "ssh_key" => "default",
-    "chef_org" => "mitchco",
+    "chef_org" => "rs_demo",
     "chef_username" => "gerdisch",
-    "chef_user_validation" => "MITCH_HOSTED_CHEF_VALIDATION_KEY",
+    "chef_user_validation" => "GERDISCH_OPSCODE_VALIDATION_KEY",
   },
 #  "Hybrid Cloud" => {
 #    "security_group" => "IIS_3tier_default_SecGrp",
@@ -197,6 +198,7 @@ resource "client_server", type: "server" do
   ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
+    "chef/client/roles" => join(["text:", $param_role]),
     "chef/client/company" => join(["text:", map($map_account, map($map_current_account, "current_account_name", "current_account"), "chef_org")]),
     "chef/client/server_url" => join(["text:https://api.opscode.com/organizations/", map($map_account, map($map_current_account, "current_account_name", "current_account"), "chef_org")]),
     "chef/client/validation_name" => join(["text:", map($map_account, map($map_current_account, "current_account_name", "current_account"), "chef_username")]),
@@ -225,8 +227,9 @@ end
 # Apply Role
 # NOT READY YET
 #
-define apply_role(@client_server) do
-  task_label("Apply role - does nothing at this time.")
+define apply_role(@client_server, $param_role) do
+  task_label("Apply role")
+  call run_recipe_inputs(@client_server, "chef::do_client_converge", { "chef/client/roles": join(["text:", $param_role]) })  
 end
 
   
@@ -237,6 +240,16 @@ end
 # Raises an error in case of failure
 define run_recipe(@target, $recipe_name) do
   @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: {})
+  sleep_until(@task.summary =~ "^(completed|failed)")
+  if @task.summary =~ "failed"
+    raise "Failed to run " + $recipe_name
+  end
+end
+
+# Helper definition, runs a recipe on given server with the given inputs, waits until recipe completes or fails
+# Raises an error in case of failure
+define run_recipe_inputs(@target, $recipe_name, $recipe_inputs) do
+  @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: $recipe_inputs)
   sleep_until(@task.summary =~ "^(completed|failed)")
   if @task.summary =~ "failed"
     raise "Failed to run " + $recipe_name

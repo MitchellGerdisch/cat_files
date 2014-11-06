@@ -70,8 +70,9 @@ parameter "param_role" do
   label "Chef Role(s)" 
   type "string" 
   description "Chef role(s) to apply to the server." 
-  allowed_pattern "[A-Za-z0-9][A-Za-z0-9-_.]*"
-  default "web_greeter"
+#  allowed_pattern "[A-Za-z0-9][A-Za-z0-9-_.]*"
+  allowed_values "turner", "hooch"
+  default "hooch"
 end
 
 
@@ -197,7 +198,7 @@ resource "client_server", type: "server" do
   ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
-    "chef/client/roles" => $param_role,
+    "chef/client/roles" => join(["text:", $param_role]),
     "chef/client/company" => join(["text:", map($map_account, map($map_current_account, "current_account_name", "current_account"), "chef_org")]),
     "chef/client/server_url" => join(["text:https://api.opscode.com/organizations/", map($map_account, map($map_current_account, "current_account_name", "current_account"), "chef_org")]),
     "chef/client/validation_name" => join(["text:", map($map_account, map($map_current_account, "current_account_name", "current_account"), "chef_username")]),
@@ -226,6 +227,7 @@ end
 # Apply Role
 # NOT READY YET
 #
-define apply_role(@client_server) do
-  task_label("Apply role - does nothing at this time.")
+define apply_role(@client_server, $param_role) do
+  task_label("Apply role")
+  call run_recipe_inputs(@client_server, "chef::do_client_converge", { "chef/client/roles": join(["text:", $param_role]) })  
 end
