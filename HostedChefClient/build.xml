@@ -4,17 +4,15 @@
   <!-- The value of a property is accessed via ${} -->
   <property name="include.dir" location="../includes" />
   <property name="source.dir" location="." />
-  <property name="source.files" value="3_tier_HaProxy-IIS-SQL.rb" />
+  <property name="source.files" value="HostedChefClient.rb" />
 
 
   <!-- Builds a single file (name is based on target.file above) consisting of:
   		- All .rb files in this directory, and then 
   		- All files (of any type) in the includes directory a layer above.
   -->
-  <!-- TO-DOs:
-  		- Multi-stage build which uses regexp capability to insert, say, mappings into the main .rb file and then do the final concat
-  			to produce the final bigcat file.
-  -->
+
+<!--
   <target name="HybridCloud">
     <property name="target.file" location="./built4HybridCloud_three_tier_IIS.rb" />
   	<delete file="${target.file}"/>
@@ -30,9 +28,10 @@
   		flags="g"
   	/>
   </target>
+-->
 	
   <target name="Sandbox">
-    <property name="target.file" location="./built4CseSandbox_three_tier_IIS.rb" />
+    <property name="target.file" location="./built4CseSandbox_HostedChefClient.rb" />
   	<delete file="${target.file}"/>
 	<concat destfile="${target.file}">
     	<fileset dir="${source.dir}"
@@ -47,7 +46,7 @@
 	/>
   </target>
   
-  <target name="main" depends="HybridCloud">
+  <target name="main" depends="Sandbox">
     <description>Main target</description>
   </target>
 

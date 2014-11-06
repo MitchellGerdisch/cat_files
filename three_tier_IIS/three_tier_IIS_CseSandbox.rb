@@ -69,7 +69,7 @@
 #     Enable two threads at maximum and that should load the CPU and cause scaling.
 
 
-name "IIS-SQL Dev Stack - Testing Nulls"
+name "IIS-SQL Dev Stack - Testing PortForward"
 rs_ca_ver 20131202
 short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)
 Builds an HAproxy-IIS-MS_SQL 3-tier website architecture in the cloud using RightScale\'s ServerTemplates and a Cloud Application Template."
@@ -237,6 +237,13 @@ output "haproxy_status" do
   category "Connect"
   default_value join(["http://", @lb_1.public_ip_address, "/haproxy-status"])
   description "Accesses Load Balancer status page"
+end
+
+output "port_forward" do
+  label "port forwarding info" 
+  category "Connect"
+  default_value join("private port: ", @lb_1.public_ip_address.private_port, "; public port: ", @lb_1.public_ip_address.public_port ])
+  description "Port info"
 end
 
 ##############
