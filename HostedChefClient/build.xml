@@ -12,9 +12,8 @@
   		- All files (of any type) in the includes directory a layer above.
   -->
 
-<!--
   <target name="HybridCloud">
-    <property name="target.file" location="./built4HybridCloud_three_tier_IIS.rb" />
+    <property name="target.file" location="./built4HybridCloud_HostedChefClient.rb" />
   	<delete file="${target.file}"/>
 	<concat destfile="${target.file}">
     	<fileset dir="${source.dir}"
@@ -28,7 +27,7 @@
   		flags="g"
   	/>
   </target>
--->
+
 	
   <target name="Sandbox">
     <property name="target.file" location="./built4CseSandbox_HostedChefClient.rb" />
