@@ -25,6 +25,7 @@
 #RightScale Cloud Application Template (CAT)
 
 # Deploys a simplex dev stack for consisting of LB, scalable (based on CPU load) IIS app server and MS SQL server.
+# Works in AWS or Azure.
 #
 # No DNS needs to be set up - it passes the information around based on real-time IP assignments.
 #
@@ -63,16 +64,19 @@
 #     DBADMIN_PASSWORD - The password to encrypt the master key when it's created or decrypt it when opening an existing master key.
 #
 # DEMO NOTES:
+#   Application Web Page Access in Azure:
+#     You need to look at the port forwarding info for the server in Cloud Management and point your browser to the IP:FORWARDING_PORT selected by Azure.
 #   Scaling:
 #     Login to the App instance and download http://download.sysinternals.com/files/CPUSTRES.zip
 #     Unzip file and run CPUSTRES.exe
 #     Enable two threads at maximum and that should load the CPU and cause scaling.
 
 
-name "IIS-SQL Dev Stack - port forwarding test"
+name "IIS-SQL Dev Stack"
 rs_ca_ver 20131202
-short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)
-Builds an HAproxy-IIS-MS_SQL 3-tier website architecture in the cloud using RightScale\'s ServerTemplates and a Cloud Application Template."
+short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)\n
+Builds an HAproxy-IIS-MS_SQL 3-tier website architecture in the cloud using RightScale\'s ServerTemplates and a Cloud Application Template.\n
+Supports scaling of the application tier based on CPU load."
 
 ##############
 # PARAMETERS #
@@ -181,10 +185,10 @@ end
 # TO-DO: Get account info from the environment and use the mapping accordingly.
 # REAL TO-DO: Once API support is avaiable in CATs, create the security groups, etc in real-time.
 # map($map_current_account, 'current_account_name', 'current_account')
-# _Hybrid Cloud is replacd by the Ant build file with the applicable account name based on build target.
+# _CSE Sandbox is replacd by the Ant build file with the applicable account name based on build target.
 mapping "map_current_account" do {
   "current_account_name" => {
-    "current_account" => "Hybrid Cloud",
+    "current_account" => "CSE Sandbox",
   },
 }
 end
@@ -239,13 +243,6 @@ output "haproxy_status" do
   description "Accesses Load Balancer status page"
 end
 
-output "port_forward" do
-  label "port forwarding info" 
-  category "Connect"
-  default_value join(["private port: ", @lb_1.public_ip_address.private_port, "; public port: ", @lb_1.public_ip_address.public_port ])
-  description "Port info"
-end
-
 ##############
 # RESOURCES  #
 ##############
@@ -257,89 +254,89 @@ resource "lb_1", type: "server" do
   server_template find("Load Balancer with HAProxy (v13.5.5-LTS)", revision: 18)
 #  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
 #  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
-#  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
-#  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
+  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
+  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
     "lb/session_stickiness" => "text:false",   
   } end
 end
 
-#resource "db_1", type: "server" do
-#  name "Tier 3 - DB 1"
-#  cloud map( $map_cloud, $param_location, "cloud" )
-#  instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
-#  server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS)", revision: 5)
-##  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
-##  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
-#  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
-#  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
-#    inputs do {
-#      "ADMIN_PASSWORD" => "cred:WINDOWS_ADMIN_PASSWORD",
-#      "BACKUP_FILE_NAME" => "text:DotNetNuke.bak",
-#      "BACKUP_VOLUME_SIZE" => "text:10",
-#      "DATA_VOLUME_SIZE" => "text:10",
-#      "DB_LINEAGE_NAME" => join(["text:selfservice-demo-lineage-",@@deployment.href]),
-#      "DB_NAME" => "text:DotNetNuke",
-#      "DB_NEW_LOGIN_NAME" => "cred:SQL_APPLICATION_USER",
-#      "DB_NEW_LOGIN_PASSWORD" => "cred:SQL_APPLICATION_PASSWORD",
-#      "DNS_SERVICE" => "text:Skip DNS registration",
-##      "DNS_DOMAIN_NAME" => "env:Tier 3 - DB 1:PRIVATE_IP",
-##      "DNS_ID" => "text:14762727",
-##      "DNS_PASSWORD" => "cred:DNS_MADE_EASY_PASSWORD",
-##      "DNS_USER" => "cred:DNS_MADE_EASY_USER",
-#      "LOGS_VOLUME_SIZE" => "text:1",
-#      "MASTER_KEY_PASSWORD" => "cred:DBADMIN_PASSWORD",
-#      "REMOTE_STORAGE_ACCOUNT_ID" => "cred:AWS_ACCESS_KEY_ID",
-#      "REMOTE_STORAGE_ACCOUNT_PROVIDER" => "text:Amazon_S3",
-#      "REMOTE_STORAGE_ACCOUNT_SECRET" => "cred:AWS_SECRET_ACCESS_KEY",
-#      "REMOTE_STORAGE_CONTAINER" => join(["text:", map( $map_account, map($map_current_account, "current_account_name", "current_account"), "s3_bucket" )]),
-#      "SYS_WINDOWS_TZINFO" => "text:Pacific Standard Time",
-#  } end
-#end
-#
-#
-#resource "server_array_1", type: "server_array" do
-#  name "Tier 2 - IIS App Server"
-#  cloud map( $map_cloud, $param_location, "cloud" )
-#  instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
-#  #server_template find("Microsoft IIS App Server (v13.5.0-LTS)", revision: 3)
-#  server_template find("Microsoft IIS App Server (v13.5.0-LTS) scaling")
-##  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
-##  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
-#  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
-#  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
-#  inputs do {
-#    "REMOTE_STORAGE_ACCOUNT_ID_APP" => "cred:AWS_ACCESS_KEY_ID",
-#    "REMOTE_STORAGE_ACCOUNT_PROVIDER_APP" => "text:Amazon_S3",
-#    "REMOTE_STORAGE_ACCOUNT_SECRET_APP" => "cred:AWS_SECRET_ACCESS_KEY",
-#    "REMOTE_STORAGE_CONTAINER_APP" => join(["text:", map( $map_account, map($map_current_account, "current_account_name", "current_account"), "s3_bucket" )]),
-#    "ZIP_FILE_NAME" => "text:DotNetNuke.zip",
-#    "OPT_CONNECTION_STRING_DB_NAME" => "text:DotNetNuke",
-#    "OPT_CONNECTION_STRING_DB_SERVER_NAME" => "env:Tier 3 - DB 1:PRIVATE_IP",
-#    "OPT_CONNECTION_STRING_DB_USER_ID" => "cred:SQL_APPLICATION_USER",
-#    "OPT_CONNECTION_STRING_DB_USER_PASSWORD" => "cred:SQL_APPLICATION_PASSWORD",
-#    "OPT_CONNECTION_STRING_NAME" => "text:SiteSqlServer",
-#    "ADMIN_PASSWORD" => "cred:WINDOWS_ADMIN_PASSWORD",
-#    "SYS_WINDOWS_TZINFO" => "text:Pacific Standard Time",    
-#  } end
-#  state "enabled"
-#  array_type "alert"
-#  elasticity_params do {
-#    "bounds" => {
-#      "min_count"            => $array_min_size,
-#      "max_count"            => $array_max_size
-#    },
-#    "pacing" => {
-#      "resize_calm_time"     => 20, 
-#      "resize_down_by"       => 1,
-#      "resize_up_by"         => 1
-#    },
-#    "alert_specific_params" => {
-#      "decision_threshold"   => 51,
-#      "voters_tag_predicate" => "Tier 2 - IIS App Server"
-#    }
-#  } end
-#end
+resource "db_1", type: "server" do
+  name "Tier 3 - DB 1"
+  cloud map( $map_cloud, $param_location, "cloud" )
+  instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
+  server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS)", revision: 5)
+#  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
+#  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
+  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
+  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
+    inputs do {
+      "ADMIN_PASSWORD" => "cred:WINDOWS_ADMIN_PASSWORD",
+      "BACKUP_FILE_NAME" => "text:DotNetNuke.bak",
+      "BACKUP_VOLUME_SIZE" => "text:10",
+      "DATA_VOLUME_SIZE" => "text:10",
+      "DB_LINEAGE_NAME" => join(["text:selfservice-demo-lineage-",@@deployment.href]),
+      "DB_NAME" => "text:DotNetNuke",
+      "DB_NEW_LOGIN_NAME" => "cred:SQL_APPLICATION_USER",
+      "DB_NEW_LOGIN_PASSWORD" => "cred:SQL_APPLICATION_PASSWORD",
+      "DNS_SERVICE" => "text:Skip DNS registration",
+#      "DNS_DOMAIN_NAME" => "env:Tier 3 - DB 1:PRIVATE_IP",
+#      "DNS_ID" => "text:14762727",
+#      "DNS_PASSWORD" => "cred:DNS_MADE_EASY_PASSWORD",
+#      "DNS_USER" => "cred:DNS_MADE_EASY_USER",
+      "LOGS_VOLUME_SIZE" => "text:1",
+      "MASTER_KEY_PASSWORD" => "cred:DBADMIN_PASSWORD",
+      "REMOTE_STORAGE_ACCOUNT_ID" => "cred:AWS_ACCESS_KEY_ID",
+      "REMOTE_STORAGE_ACCOUNT_PROVIDER" => "text:Amazon_S3",
+      "REMOTE_STORAGE_ACCOUNT_SECRET" => "cred:AWS_SECRET_ACCESS_KEY",
+      "REMOTE_STORAGE_CONTAINER" => join(["text:", map( $map_account, map($map_current_account, "current_account_name", "current_account"), "s3_bucket" )]),
+      "SYS_WINDOWS_TZINFO" => "text:Pacific Standard Time",
+  } end
+end
+
+
+resource "server_array_1", type: "server_array" do
+  name "Tier 2 - IIS App Server"
+  cloud map( $map_cloud, $param_location, "cloud" )
+  instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
+  #server_template find("Microsoft IIS App Server (v13.5.0-LTS)", revision: 3)
+  server_template find("Microsoft IIS App Server (v13.5.0-LTS) scaling")
+#  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
+#  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
+  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
+  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
+  inputs do {
+    "REMOTE_STORAGE_ACCOUNT_ID_APP" => "cred:AWS_ACCESS_KEY_ID",
+    "REMOTE_STORAGE_ACCOUNT_PROVIDER_APP" => "text:Amazon_S3",
+    "REMOTE_STORAGE_ACCOUNT_SECRET_APP" => "cred:AWS_SECRET_ACCESS_KEY",
+    "REMOTE_STORAGE_CONTAINER_APP" => join(["text:", map( $map_account, map($map_current_account, "current_account_name", "current_account"), "s3_bucket" )]),
+    "ZIP_FILE_NAME" => "text:DotNetNuke.zip",
+    "OPT_CONNECTION_STRING_DB_NAME" => "text:DotNetNuke",
+    "OPT_CONNECTION_STRING_DB_SERVER_NAME" => "env:Tier 3 - DB 1:PRIVATE_IP",
+    "OPT_CONNECTION_STRING_DB_USER_ID" => "cred:SQL_APPLICATION_USER",
+    "OPT_CONNECTION_STRING_DB_USER_PASSWORD" => "cred:SQL_APPLICATION_PASSWORD",
+    "OPT_CONNECTION_STRING_NAME" => "text:SiteSqlServer",
+    "ADMIN_PASSWORD" => "cred:WINDOWS_ADMIN_PASSWORD",
+    "SYS_WINDOWS_TZINFO" => "text:Pacific Standard Time",    
+  } end
+  state "enabled"
+  array_type "alert"
+  elasticity_params do {
+    "bounds" => {
+      "min_count"            => $array_min_size,
+      "max_count"            => $array_max_size
+    },
+    "pacing" => {
+      "resize_calm_time"     => 20, 
+      "resize_down_by"       => 1,
+      "resize_up_by"         => 1
+    },
+    "alert_specific_params" => {
+      "decision_threshold"   => 51,
+      "voters_tag_predicate" => "Tier 2 - IIS App Server"
+    }
+  } end
+end
 
 
 ###############
@@ -510,6 +507,16 @@ end
 # Raises an error in case of failure
 define run_recipe(@target, $recipe_name) do
   @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: {})
+  sleep_until(@task.summary =~ "^(completed|failed)")
+  if @task.summary =~ "failed"
+    raise "Failed to run " + $recipe_name
+  end
+end
+
+# Helper definition, runs a recipe on given server with the given inputs, waits until recipe completes or fails
+# Raises an error in case of failure
+define run_recipe_inputs(@target, $recipe_name, $recipe_inputs) do
+  @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: $recipe_inputs)
   sleep_until(@task.summary =~ "^(completed|failed)")
   if @task.summary =~ "failed"
     raise "Failed to run " + $recipe_name

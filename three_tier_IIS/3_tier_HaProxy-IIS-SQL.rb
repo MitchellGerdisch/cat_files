@@ -25,6 +25,7 @@
 #RightScale Cloud Application Template (CAT)
 
 # Deploys a simplex dev stack for consisting of LB, scalable (based on CPU load) IIS app server and MS SQL server.
+# Works in AWS or Azure.
 #
 # No DNS needs to be set up - it passes the information around based on real-time IP assignments.
 #
@@ -63,6 +64,8 @@
 #     DBADMIN_PASSWORD - The password to encrypt the master key when it's created or decrypt it when opening an existing master key.
 #
 # DEMO NOTES:
+#   Application Web Page Access in Azure:
+#     You need to look at the port forwarding info for the server in Cloud Management and point your browser to the IP:FORWARDING_PORT selected by Azure.
 #   Scaling:
 #     Login to the App instance and download http://download.sysinternals.com/files/CPUSTRES.zip
 #     Unzip file and run CPUSTRES.exe
@@ -71,8 +74,9 @@
 
 name "IIS-SQL Dev Stack"
 rs_ca_ver 20131202
-short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)
-Builds an HAproxy-IIS-MS_SQL 3-tier website architecture in the cloud using RightScale\'s ServerTemplates and a Cloud Application Template."
+short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)\n
+Builds an HAproxy-IIS-MS_SQL 3-tier website architecture in the cloud using RightScale\'s ServerTemplates and a Cloud Application Template.\n
+Supports scaling of the application tier based on CPU load."
 
 ##############
 # PARAMETERS #
