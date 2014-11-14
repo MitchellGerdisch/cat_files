@@ -169,7 +169,7 @@ mapping "map_account" do {
     "ssh_key" => "default",
   },
   "Hybrid Cloud" => {
-    "security_group" => "IIS_3tier_default_SecGrp",
+    "security_group" => "default",
     "ssh_key" => "default",
   },
 }
