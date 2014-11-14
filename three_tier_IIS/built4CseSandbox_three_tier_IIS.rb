@@ -26,6 +26,7 @@
 
 # Deploys a simplex dev stack for consisting of LB, scalable (based on CPU load) IIS app server and MS SQL server.
 # Works in AWS or Azure.
+# Includes option to deploy a Seige load server and operations to start/stop the load.
 #
 # No DNS needs to be set up - it passes the information around based on real-time IP assignments.
 #
@@ -67,9 +68,7 @@
 #   Application Web Page Access in Azure:
 #     You need to look at the port forwarding info for the server in Cloud Management and point your browser to the IP:FORWARDING_PORT selected by Azure.
 #   Scaling:
-#     Login to the App instance and download http://download.sysinternals.com/files/CPUSTRES.zip
-#     Unzip file and run CPUSTRES.exe
-#     Enable two threads at maximum and that should load the CPU and cause scaling.
+#     Deploy with Seige server and use operations to start/stop load.
 
 
 name "IIS-SQL Dev Stack"
@@ -125,6 +124,14 @@ parameter "array_max_size" do
   default "5"
 end
 
+parameter "param_deploy_seige_server" do 
+  category "Deployment Options"
+  label "Deploy Seige load generator?" 
+  type "string" 
+  description "Whether or not to deploy a Seige load generator server." 
+  allowed_values "yes", "no"
+  default "yes"
+end
 
 ##############
 # MAPPINGS   #
@@ -201,6 +208,8 @@ mapping "map_account" do {
     "restore_db_script_href" => "524831004",
     "create_db_login_script_href" => "524829004",
     "restart_iis_script_href" => "524965004",
+    "siege_start_load_href" => "530065004",
+    "siege_stop_load_href" => "530066004",
   },
   "Hybrid Cloud" => {
     "security_group" => "IIS_3tier_default_SecGrp",
@@ -209,6 +218,8 @@ mapping "map_account" do {
     "restore_db_script_href" => "493424003",
     "create_db_login_script_href" => "493420003",
     "restart_iis_script_href" => "527791003",
+    "siege_start_load_href" => "443613001",
+    "siege_stop_load_href" => "443616001",
   },
 }
 end
@@ -224,13 +235,18 @@ condition "inAWS" do
   equals?(map($map_cloud, $param_location,"provider"), "AWS")
 end
 
+# Checks if seige load server should be deployed
+condition "deploySiege" do
+  equals?($param_deploy_seige_server, "yes")
+end
+
 
 ##############
 # OUTPUTS    #
 ##############
 
 output "end2end_test" do
-  label "End to End Test" 
+  label "Web Site" 
   category "Connect"
   default_value join(["http://", @lb_1.public_ip_address])
   description "Verifies access through LB #1 to App server and App server access to the DB server."
@@ -338,6 +354,22 @@ resource "server_array_1", type: "server_array" do
   } end
 end
 
+# Siege server
+resource "load_generator", type: "server" do
+  name "Load Generator"
+  condition $deploySiege
+  cloud map( $map_cloud, $param_location, "cloud" )
+  instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
+  server_template find("Siege Load Tester", revision: 32)
+  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
+  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
+  inputs do {
+    "SIEGE_TEST_URL" => "env:Tier 1 - LB 1:PRIVATE_IP",
+    "SIEGE_TEST_CONCURRENT_USERS" => "text:200",
+    "SIEGE_TEST_DURATION" => "text:45",
+    "SIEGE_TEST_MAX_DELAY" => "text:2",
+  } end
+end
 
 ###############
 ## Operations #
@@ -355,12 +387,17 @@ operation "enable" do
   definition "enable_application"
 end 
 
-# allows user to import a DB dump at any time (operational script).
-# Not supported at this time
-#operation "Import DB dump" do
-#  description "Run script to import the DB dump"
-#  definition "import_db_dump"
-#end
+operation "start_load" do
+  description "Generates load to cause scaling."
+  condition $deploySiege
+  definition "start_load"
+end
+
+operation "stop_load" do
+  description "Stops load generation."
+  condition $deploySiege
+  definition "stop_load"
+end
 
 
 ##############
@@ -371,7 +408,7 @@ end
 # Launch operation
 #
 
-define launch_concurrent(@lb_1, @db_1, @server_array_1) return @lb_1, @db_1, @server_array_1 do
+define launch_concurrent(@lb_1, @db_1, @server_array_1, @load_generator) return @lb_1, @db_1, @server_array_1, @load_generator do
     task_label("Launch servers concurrently")
 
     # Since we want to launch these in concurrent tasks, we need to use global resources
@@ -382,6 +419,7 @@ define launch_concurrent(@lb_1, @db_1, @server_array_1) return @lb_1, @db_1, @se
     @@launch_task_lb1 = @lb_1
     @@launch_task_db1 = @db_1
     @@launch_task_array1 = @server_array_1
+    @@launch_task_lg = @load_generator
 
     # Do just the DB and LB concurrently.
     # It may be the case that the DB server needs to be operational before the App server will work properly.
@@ -414,12 +452,23 @@ define launch_concurrent(@lb_1, @db_1, @server_array_1) return @lb_1, @db_1, @se
           provision(@@launch_task_array1)
         end
       end
+      
+      sub task_name:"Launch Load Generator" do
+        task_label("Launching Load Generator")
+        $lg_retries = 0 
+        sub on_error: handle_provision_error($lg_retries) do
+          $lg_retries = $lg_retries + 1
+          provision(@@launch_task_lg)
+        end
+      end
+      
     end
 
     # Copy the globally-scoped resources back into the SS-scoped resources that we're returning
     @lb_1 = @@launch_task_lb1
     @db_1 = @@launch_task_db1
     @server_array_1 = @@launch_task_array1
+    @load_generator = @@launch_task_lg
 end
 
 define handle_provision_error($count) do
@@ -455,6 +504,20 @@ define enable_application(@db_1, @server_array_1, $map_current_account, $map_acc
   call multi_run_script(@server_array_1,  join(["/api/right_scripts/", $restart_iis_script]))
 
 end
+
+define start_load(@load_generator, $map_current_account, $map_account) do
+  task_label("Start load generation.")
+  $cur_account = map($map_current_account, "current_account_name", "current_account")
+  $siege_start_load = map( $map_account, $cur_account, "siege_start_load_href" )
+  call run_script(@load_generator,  join(["/api/right_scripts/", $siege_start_load]))
+end
+
+define stop_load(@load_generator, $map_current_account, $map_account) do
+  task_label("Stop load generation.")
+  $cur_account = map($map_current_account, "current_account_name", "current_account")
+  $siege_stop_load = map( $map_account, $cur_account, "siege_stop_load_href" )
+  call run_script(@load_generator,  join(["/api/right_scripts/", $siege_stop_load]))
+end
  
 #
 # Import DB operation
@@ -465,40 +528,7 @@ define import_db_dump(@db_1) do
   call run_recipe(@db_1, "db::do_dump_import")  
 end
 
-## Helper definition, runs a recipe on given server, waits until recipe completes or fails
-## Raises an error in case of failure
-#define run_recipe(@target, $recipe_name) do
-#  @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: {})
-#  sleep_until(@task.summary =~ "^(completed|failed)")
-#  if @task.summary =~ "failed"
-#    raise "Failed to run " + $recipe_name
-#  end
-#end
-#
-## Helper definition, runs a script on given server, waits until script completes or fails
-## Raises an error in case of failure
-#define run_script(@target, $right_script_href) do
-#  @task = @target.current_instance().run_executable(right_script_href: $right_script_href, inputs: {})
-#  sleep_until(@task.summary =~ "^(completed|failed)")
-#  if @task.summary =~ "failed"
-#    raise "Failed to run " + $right_script_href
-#  end
-#end
-#
-## Helper definition, runs a script on all instances in the array.
-## waits until script completes or fails
-## Raises an error in case of failure
-#define multi_run_script(@target, $right_script_href) do
-#  @task = @target.multi_run_executable(right_script_href: $right_script_href, inputs: {})
-#  sleep_until(@task.summary =~ "^(completed|failed)")
-#  if @task.summary =~ "failed"
-#    raise "Failed to run " + $right_script_href
-#  end
-#end
-#
-#define log($message) do
-#  rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: $message})
-#end
+
   
 ####################
 # Helper functions #
