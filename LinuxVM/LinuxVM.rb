@@ -34,9 +34,9 @@
 # CAT deploys the RightImage_Ubuntu_12.04_x64_v13.5 [rev 33] image based on the above.
 #   This image is a multicloud image for AWS, Azure and RackSpace.
 
-name 'Mitch Play Linux Server'
+name 'Simple Linux Server'
 rs_ca_ver 20131202
-short_description 'Playing around with logging and other output mechanisms.'
+short_description 'Deploys single Linux server.'
 
 
 ##############
@@ -51,8 +51,8 @@ parameter "param_location" do
   label "Location" 
   type "string" 
   description "Geographical location for the server." 
-  allowed_values "Australia", "Brazil", "Japan", "Netherlands", "Singapore", "USA", "Saturn"
-  default "USA"
+  allowed_values "AWS US-East", "AWS US-West"
+  default "AWS US-East"
 end
 
 parameter "param_performance" do 
@@ -93,47 +93,17 @@ mapping "map_instance_type" do {
 end
 
 mapping "map_cloud" do {
-  "Australia" => {
-    "provider" => "AWS",
-    "cloud" => "ap-southeast-2",
-    "security_group" => 'default',
-    "ssh_key" => "default",
-  },
-  "Brazil" => {
-    "provider" => "AWS",
-    "cloud" => "sa-east-1",
-    "security_group" => 'default',
-    "ssh_key" => "default",
-  },
-  "Netherlands" => {
-    "provider" => "Azure",
-    "cloud" => "Azure West Europe",
-    "security_group" => null,
-    "ssh_key" => null,
-  },
-  "Japan" => {
-    "provider" => "AWS",
-    "cloud" => "ap-northeast-1",
-    "security_group" => 'default',
-    "ssh_key" => "default",
-  },
-  "Singapore" => {
-    "provider" => "Azure",
-    "cloud" => "Azure Southeast Asia",
-    "security_group" => null,
-    "ssh_key" => null,
-  },
-  "USA" => {
+  "AWS US-East" => {
     "provider" => "AWS",
     "cloud" => "us-east-1",
     "security_group" => 'default',
     "ssh_key" => "default",
   },
-  "Saturn" => {   # For testing purposes
-    "provider" => "Azure",
-    "cloud" => "Azure East US",
-    "security_group" => null,
-    "ssh_key" => null,
+  "AWS US-West" => {
+    "provider" => "AWS",
+    "cloud" => "us-west-1",
+    "security_group" => 'default',
+    "ssh_key" => "default",
   },
 }
 end
@@ -179,7 +149,6 @@ resource 'your_server', type: 'server' do
   cloud map($map_cloud, $param_location, 'cloud')
   instance_type map( $map_instance_type, map( $map_cloud, $param_location,'provider'), $param_performance)
   server_template find('Base ServerTemplate for Linux (v13.5.5-LTS)', revision: 21)
-  multi_cloud_image_href '/api/multi_cloud_images/377766004'
   security_groups map( $map_cloud, $param_location, 'security_group' )
   ssh_key map( $map_cloud, $param_location, 'ssh_key' )
 end

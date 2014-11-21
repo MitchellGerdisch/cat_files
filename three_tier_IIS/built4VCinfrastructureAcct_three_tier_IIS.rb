@@ -372,10 +372,10 @@ end
 ###############
 
 # executes automatically
-operation "launch" do
-  description "Launches all the servers concurrently"
-  definition "launch_concurrent"
-end
+#operation "launch" do
+#  description "Launches all the servers concurrently"
+#  definition "launch_concurrent"
+#end
 
 # executes automatically
 operation "enable" do
@@ -404,68 +404,68 @@ end
 # Launch operation
 #
 
-define launch_concurrent(@lb_1, @db_1, @server_array_1, @load_generator) return @lb_1, @db_1, @server_array_1, @load_generator do
-    task_label("Launch servers concurrently")
-
-    # Since we want to launch these in concurrent tasks, we need to use global resources
-    #  Tasks (like a "sub" of a concurrent block) get a copy of the resource scoped only
-    #   to that task. Since we want to modify these particular resources, we copy them
-    #   into global scope and copy them back at the end
-    
-    @@launch_task_lb1 = @lb_1
-    @@launch_task_db1 = @db_1
-    @@launch_task_array1 = @server_array_1
-    @@launch_task_lg = @load_generator
-
-    # Do just the DB and LB concurrently.
-    # It may be the case that the DB server needs to be operational before the App server will work properly.
-    # There's a known issue in DotNetNuke where it'll throw the under construction page if the DB server we restarted after the app server connected.
-    concurrent do
-      sub task_name:"Launch LB-1" do
-        task_label("Launching LB-1")
-        $lb1_retries = 0 
-        sub on_error: handle_provision_error($lb1_retries) do
-          $lb1_retries = $lb1_retries + 1
-          provision(@@launch_task_lb1)
-        end
-      end
-      
-      sub task_name:"Launch DB-1" do
-        task_label("Launching DB-1")
-        $db1_retries = 0 
-        sub on_error: handle_provision_error($db1_retries) do
-          $db1_retries = $db1_retries + 1
-          provision(@@launch_task_db1)
-        end
-      end
-
-      sub task_name:"Provision Server Array" do
-        task_label("Provision Server Array: Provisioning the array now.")
-        sleep(90) # Give the DB a chance to at least get created, App server needs its Private PRIVATE_IP
-        $app_retries = 0 
-        sub on_error: handle_provision_error($app_retries) do
-          $app_retries = $app_retries + 1
-          provision(@@launch_task_array1)
-        end
-      end
-      
-      sub task_name:"Launch Load Generator" do
-        task_label("Launching Load Generator")
-        $lg_retries = 0 
-        sub on_error: handle_provision_error($lg_retries) do
-          $lg_retries = $lg_retries + 1
-          provision(@@launch_task_lg)
-        end
-      end
-      
-    end
-
-    # Copy the globally-scoped resources back into the SS-scoped resources that we're returning
-    @lb_1 = @@launch_task_lb1
-    @db_1 = @@launch_task_db1
-    @server_array_1 = @@launch_task_array1
-    @load_generator = @@launch_task_lg
-end
+#define launch_concurrent(@lb_1, @db_1, @server_array_1, @load_generator) return @lb_1, @db_1, @server_array_1, @load_generator do
+#    task_label("Launch servers concurrently")
+#
+#    # Since we want to launch these in concurrent tasks, we need to use global resources
+#    #  Tasks (like a "sub" of a concurrent block) get a copy of the resource scoped only
+#    #   to that task. Since we want to modify these particular resources, we copy them
+#    #   into global scope and copy them back at the end
+#    
+#    @@launch_task_lb1 = @lb_1
+#    @@launch_task_db1 = @db_1
+#    @@launch_task_array1 = @server_array_1
+#    @@launch_task_lg = @load_generator
+#
+#    # Do just the DB and LB concurrently.
+#    # It may be the case that the DB server needs to be operational before the App server will work properly.
+#    # There's a known issue in DotNetNuke where it'll throw the under construction page if the DB server we restarted after the app server connected.
+#    concurrent do
+#      sub task_name:"Launch LB-1" do
+#        task_label("Launching LB-1")
+#        $lb1_retries = 0 
+#        sub on_error: handle_provision_error($lb1_retries) do
+#          $lb1_retries = $lb1_retries + 1
+#          provision(@@launch_task_lb1)
+#        end
+#      end
+#      
+#      sub task_name:"Launch DB-1" do
+#        task_label("Launching DB-1")
+#        $db1_retries = 0 
+#        sub on_error: handle_provision_error($db1_retries) do
+#          $db1_retries = $db1_retries + 1
+#          provision(@@launch_task_db1)
+#        end
+#      end
+#
+#      sub task_name:"Provision Server Array" do
+#        task_label("Provision Server Array: Provisioning the array now.")
+#        sleep(90) # Give the DB a chance to at least get created, App server needs its Private PRIVATE_IP
+#        $app_retries = 0 
+#        sub on_error: handle_provision_error($app_retries) do
+#          $app_retries = $app_retries + 1
+#          provision(@@launch_task_array1)
+#        end
+#      end
+#      
+#      sub task_name:"Launch Load Generator" do
+#        task_label("Launching Load Generator")
+#        $lg_retries = 0 
+#        sub on_error: handle_provision_error($lg_retries) do
+#          $lg_retries = $lg_retries + 1
+#          provision(@@launch_task_lg)
+#        end
+#      end
+#      
+#    end
+#
+#    # Copy the globally-scoped resources back into the SS-scoped resources that we're returning
+#    @lb_1 = @@launch_task_lb1
+#    @db_1 = @@launch_task_db1
+#    @server_array_1 = @@launch_task_array1
+#    @load_generator = @@launch_task_lg
+#end
 
 define handle_provision_error($count) do
   call log("Handling provision error: " + $_error["message"], "Notification")

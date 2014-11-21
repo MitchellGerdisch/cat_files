@@ -372,10 +372,10 @@ end
 ###############
 
 # executes automatically
-operation "launch" do
-  description "Launches all the servers concurrently"
-  definition "launch_concurrent"
-end
+#operation "launch" do
+#  description "Launches all the servers concurrently"
+#  definition "launch_concurrent"
+#end
 
 # executes automatically
 operation "enable" do
