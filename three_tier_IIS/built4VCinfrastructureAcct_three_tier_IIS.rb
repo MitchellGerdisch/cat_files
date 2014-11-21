@@ -178,10 +178,10 @@ end
 # TO-DO: Get account info from the environment and use the mapping accordingly.
 # REAL TO-DO: Once API support is avaiable in CATs, create the security groups, etc in real-time.
 # map($map_current_account, 'current_account_name', 'current_account')
-# _CSE Sandbox is replacd by the Ant build file with the applicable account name based on build target.
+# _VC infrastructure is replacd by the Ant build file with the applicable account name based on build target.
 mapping "map_current_account" do {
   "current_account_name" => {
-    "current_account" => "CSE Sandbox",
+    "current_account" => "VC infrastructure",
   },
 }
 end

@@ -91,8 +91,8 @@ parameter "param_location" do
   label "Cloud" 
   type "string" 
   description "Cloud to deploy in." 
-  allowed_values "AWS-Australia", "AWS-Brazil", "AWS-Japan", "AWS-USA", "Azure-Netherlands", "Azure-Singapore", "Azure-USA"
-  default "AWS-USA"
+  allowed_values "AWS-US-East", "AWS-US-West"
+  default "AWS-US-East"
 end
 
 parameter "param_performance" do 
@@ -162,34 +162,15 @@ mapping "map_instance_type" do {
 }
 end
 
+# Customized for VC POC to represent AWS clouds where things are set up for the CAT (e.g. SSH keys)
 mapping "map_cloud" do {
-  "AWS-Australia" => {
+  "AWS-US-East" => {
     "provider" => "AWS",
-    "cloud" => "ap-southeast-2",
+    "cloud" => "us-east-1",
   },
-  "AWS-Brazil" => {
-    "provider" => "AWS",
-    "cloud" => "sa-east-1",
-  },
-  "Azure-Netherlands" => {
-    "provider" => "Azure",
-    "cloud" => "Azure West Europe",
-  },
-  "AWS-Japan" => {
-    "provider" => "AWS",
-    "cloud" => "ap-northeast-1",
-  },
-  "Azure-Singapore" => {
-    "provider" => "Azure",
-    "cloud" => "Azure Southeast Asia",
-  },
-  "AWS-USA" => {
+  "AWS-US-West" => {
     "provider" => "AWS",
     "cloud" => "us-west-1",
-  },
-  "Azure-USA" => {   
-    "provider" => "Azure",
-    "cloud" => "Azure East US",
   },
 }
 end
