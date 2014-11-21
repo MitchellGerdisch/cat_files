@@ -26,7 +26,7 @@
 
 # Deploys a simplex dev stack for consisting of LB, scalable (based on CPU load) IIS app server and MS SQL server.
 # Works in AWS or Azure.
-# Includes option to deploy a Seige load server and operations to start/stop the load.
+# Includes option to deploy a siege load server and operations to start/stop the load.
 #
 # No DNS needs to be set up - it passes the information around based on real-time IP assignments.
 #
@@ -68,14 +68,17 @@
 #   Application Web Page Access in Azure:
 #     You need to look at the port forwarding info for the server in Cloud Management and point your browser to the IP:FORWARDING_PORT selected by Azure.
 #   Scaling:
-#     Deploy with Seige server and use operations to start/stop load.
+#     Deploy with siege server and use operations to start/stop load.
 
 
 name "IIS-SQL Dev Stack"
 rs_ca_ver 20131202
 short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)\n
-Builds an HAproxy-IIS-MS_SQL 3-tier website architecture in the cloud using RightScale\'s ServerTemplates and a Cloud Application Template.\n
-Supports scaling of the application tier based on CPU load."
+Builds a scalable HAproxy - IIS - MS_SQL 3-tier website workload along with a load generator server for testing."
+long_description "Deploys 3-tier website workload.\n
+User can select AWS or Azure cloud, performance level, size of scaling array and whether or not to launch load generator server for testing.\n
+Once deployed, user can generate load against the workload to cause scaling. \n
+The load will run for 45 minutes unless stopped by the user."
 
 ##############
 # PARAMETERS #
@@ -124,11 +127,11 @@ parameter "array_max_size" do
   default "5"
 end
 
-parameter "param_deploy_seige_server" do 
+parameter "param_deploy_siege_server" do 
   category "Deployment Options"
-  label "Deploy Seige load generator?" 
+  label "Deploy Siege load generator?" 
   type "string" 
-  description "Whether or not to deploy a Seige load generator server." 
+  description "Whether or not to deploy a Siege load generator server." 
   allowed_values "yes", "no"
   default "yes"
 end
@@ -235,9 +238,9 @@ condition "inAWS" do
   equals?(map($map_cloud, $param_location,"provider"), "AWS")
 end
 
-# Checks if seige load server should be deployed
+# Checks if siege load server should be deployed
 condition "deploySiege" do
-  equals?($param_deploy_seige_server, "yes")
+  equals?($param_deploy_siege_server, "yes")
 end
 
 
