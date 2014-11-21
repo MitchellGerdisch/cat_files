@@ -32,6 +32,7 @@
 #
 # PREREQUISITES:
 #   Imported Server Templates:
+#     Siege Load Tester, revision: 32
 #     Load Balancer with HAProxy (v13.5.5-LTS), revision: 18 
 #     Database Manager for Microsoft SQL Server (13.5.1-LTS), revision: 5
 #     Microsoft IIS App Server (v13.5.0-LTS), revision: 3
@@ -58,6 +59,7 @@
 #   SSH Key - see mapping for proper names or to change accordingly.
 #   Security Group that is pretty wide open that covers all the VMs - see mapping for name.
 #     ports: 80, 8000, 1433, 3389
+#     TODO: Use new security groups resource type to create specific security groups for the tiers.
 #   The usual set of credentials as per the tutorial which are likely already available in the account.
 #     WINDOWS_ADMIN_PASSWORD - Password used by user, Administrator to login to the windows VMs.
 #     SQL_APPLICATION_USER - SQL database user with login privileges to the specified user database.
@@ -142,9 +144,9 @@ end
 
 mapping "map_instance_type" do {
   "AWS" => {
-    "low" => "c3.large",  
-    "medium" => "c3.xlarge", # 4 CPUs x 7GB
-    "high" => "c3.2xlarge", # 8 CPUs x 15GB
+    "low" => "m3.medium",  
+    "medium" => "c3.large", 
+    "high" => "c3.xlarge", 
   },
   "RS" => {
     # These choices are driven by what is configured for RS London cloud in RS.
@@ -223,6 +225,16 @@ mapping "map_account" do {
     "restart_iis_script_href" => "527791003",
     "siege_start_load_href" => "443613001",
     "siege_stop_load_href" => "443616001",
+  },
+  "VC infrastructure" => {
+    "security_group" => "IIS_3tier_default_SecGrp", # TODO: Use CAT security group resource type to define security groups for each tier in CAT.
+    "ssh_key" => "default",
+    "s3_bucket" => "vc-poc", 
+    "restore_db_script_href" => "530553004",
+    "create_db_login_script_href" => "530545004",
+    "restart_iis_script_href" => "530585004",
+    "siege_start_load_href" => "530594004",
+    "siege_stop_load_href" => "530595004",
   },
 }
 end
