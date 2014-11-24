@@ -36,7 +36,7 @@
 #     Load Balancer with HAProxy (v13.5.5-LTS), revision: 18 
 #     Database Manager for Microsoft SQL Server (13.5.1-LTS), revision: 5
 #     Microsoft IIS App Server (v13.5.0-LTS), revision: 3
-#       Cloned and alerts configured for scaling - needed until I can figure out how to do it in CAT for the array itself.
+#       Cloned and alerts configured for scaling
 #       Name it: Microsoft IIS App Server (v13.5.0-LTS) scaling
 #       Modify it:
 #         Create Alerts:
@@ -78,7 +78,7 @@ rs_ca_ver 20131202
 short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)\n
 Builds a scalable HAproxy - IIS - MS_SQL 3-tier website workload along with a load generator server for testing."
 long_description "Deploys 3-tier website workload.\n
-User can select AWS or Azure cloud, performance level, size of scaling array and whether or not to launch load generator server for testing.\n
+User can select the cloud, performance level, size of scaling array and whether or not to launch load generator server for testing.\n
 Once deployed, user can generate load against the workload to cause scaling. \n
 The load will run for 45 minutes unless stopped by the user."
 
@@ -287,7 +287,9 @@ resource "db_1", type: "server" do
       "BACKUP_FILE_NAME" => "text:DotNetNuke.bak",
       "BACKUP_VOLUME_SIZE" => "text:10",
       "DATA_VOLUME_SIZE" => "text:10",
-      "DB_LINEAGE_NAME" => join(["text:selfservice-demo-lineage-",@@deployment.href]),
+# Issue preventing this from working, so using a simple work-around
+#      "DB_LINEAGE_NAME" => join(["text:selfservice-demo-lineage-",@@deployment.href]),
+      "DB_LINEAGE_NAME" => "text:selfservice-demo-lineage-vc-poc",
       "DB_NAME" => "text:DotNetNuke",
       "DB_NEW_LOGIN_NAME" => "cred:SQL_APPLICATION_USER",
       "DB_NEW_LOGIN_PASSWORD" => "cred:SQL_APPLICATION_PASSWORD",
@@ -372,28 +374,28 @@ end
 ###############
 
 # executes automatically
-#operation "launch" do
-#  description "Launches all the servers concurrently"
-#  definition "launch_concurrent"
-#end
+operation "launch" do
+  description "Launches all the servers concurrently"
+  definition "launch_concurrent"
+end
 
 # executes automatically
-#operation "enable" do
-#  description "Initializes the master DB, imports a DB dump and restarts the IIS application."
-#  definition "enable_application"
-#end 
-#
-#operation "start_load" do
-#  description "Generates load to cause scaling."
-#  condition $deploySiege
-#  definition "start_load"
-#end
-#
-#operation "stop_load" do
-#  description "Stops load generation."
-#  condition $deploySiege
-#  definition "stop_load"
-#end
+operation "enable" do
+  description "Initializes the master DB, imports a DB dump and restarts the IIS application."
+  definition "enable_application"
+end 
+
+operation "start_load" do
+  description "Generates load to cause scaling."
+  condition $deploySiege
+  definition "start_load"
+end
+
+operation "stop_load" do
+  description "Stops load generation."
+  condition $deploySiege
+  definition "stop_load"
+end
 
 
 ##############
@@ -404,116 +406,116 @@ end
 # Launch operation
 #
 
-#define launch_concurrent(@lb_1, @db_1, @server_array_1, @load_generator) return @lb_1, @db_1, @server_array_1, @load_generator do
-#    task_label("Launch servers concurrently")
-#
-#    # Since we want to launch these in concurrent tasks, we need to use global resources
-#    #  Tasks (like a "sub" of a concurrent block) get a copy of the resource scoped only
-#    #   to that task. Since we want to modify these particular resources, we copy them
-#    #   into global scope and copy them back at the end
-#    
-#    @@launch_task_lb1 = @lb_1
-#    @@launch_task_db1 = @db_1
-#    @@launch_task_array1 = @server_array_1
-#    @@launch_task_lg = @load_generator
-#
-#    # Do just the DB and LB concurrently.
-#    # It may be the case that the DB server needs to be operational before the App server will work properly.
-#    # There's a known issue in DotNetNuke where it'll throw the under construction page if the DB server we restarted after the app server connected.
-#    concurrent do
-#      sub task_name:"Launch LB-1" do
-#        task_label("Launching LB-1")
-#        $lb1_retries = 0 
-#        sub on_error: handle_provision_error($lb1_retries) do
-#          $lb1_retries = $lb1_retries + 1
-#          provision(@@launch_task_lb1)
-#        end
-#      end
-#      
-#      sub task_name:"Launch DB-1" do
-#        task_label("Launching DB-1")
-#        $db1_retries = 0 
-#        sub on_error: handle_provision_error($db1_retries) do
-#          $db1_retries = $db1_retries + 1
-#          provision(@@launch_task_db1)
-#        end
-#      end
-#
-#      sub task_name:"Provision Server Array" do
-#        task_label("Provision Server Array: Provisioning the array now.")
-#        sleep(90) # Give the DB a chance to at least get created, App server needs its Private PRIVATE_IP
-#        $app_retries = 0 
-#        sub on_error: handle_provision_error($app_retries) do
-#          $app_retries = $app_retries + 1
-#          provision(@@launch_task_array1)
-#        end
-#      end
-#      
-#      sub task_name:"Launch Load Generator" do
-#        task_label("Launching Load Generator")
-#        $lg_retries = 0 
-#        sub on_error: handle_provision_error($lg_retries) do
-#          $lg_retries = $lg_retries + 1
-#          provision(@@launch_task_lg)
-#        end
-#      end
-#      
-#    end
-#
-#    # Copy the globally-scoped resources back into the SS-scoped resources that we're returning
-#    @lb_1 = @@launch_task_lb1
-#    @db_1 = @@launch_task_db1
-#    @server_array_1 = @@launch_task_array1
-#    @load_generator = @@launch_task_lg
-#end
+define launch_concurrent(@lb_1, @db_1, @server_array_1, @load_generator) return @lb_1, @db_1, @server_array_1, @load_generator do
+    task_label("Launch servers concurrently")
 
-#define handle_provision_error($count) do
-#  call log("Handling provision error: " + $_error["message"], "Notification")
-#  if $count < 5 
-#    $_error_behavior = "retry"
-#  end
-#end
-##
-## Enable operation
-##
+    # Since we want to launch these in concurrent tasks, we need to use global resources
+    #  Tasks (like a "sub" of a concurrent block) get a copy of the resource scoped only
+    #   to that task. Since we want to modify these particular resources, we copy them
+    #   into global scope and copy them back at the end
+    
+    @@launch_task_lb1 = @lb_1
+    @@launch_task_db1 = @db_1
+    @@launch_task_array1 = @server_array_1
+    @@launch_task_lg = @load_generator
+
+    # Do just the DB and LB concurrently.
+    # It may be the case that the DB server needs to be operational before the App server will work properly.
+    # There's a known issue in DotNetNuke where it'll throw the under construction page if the DB server we restarted after the app server connected.
+    concurrent do
+      sub task_name:"Launch LB-1" do
+        task_label("Launching LB-1")
+        $lb1_retries = 0 
+        sub on_error: handle_provision_error($lb1_retries) do
+          $lb1_retries = $lb1_retries + 1
+          provision(@@launch_task_lb1)
+        end
+      end
+      
+      sub task_name:"Launch DB-1" do
+        task_label("Launching DB-1")
+        $db1_retries = 0 
+        sub on_error: handle_provision_error($db1_retries) do
+          $db1_retries = $db1_retries + 1
+          provision(@@launch_task_db1)
+        end
+      end
+
+      sub task_name:"Provision Server Array" do
+        task_label("Provision Server Array: Provisioning the array now.")
+        sleep(90) # Give the DB a chance to at least get created, App server needs its Private PRIVATE_IP
+        $app_retries = 0 
+        sub on_error: handle_provision_error($app_retries) do
+          $app_retries = $app_retries + 1
+          provision(@@launch_task_array1)
+        end
+      end
+      
+      sub task_name:"Launch Load Generator" do
+        task_label("Launching Load Generator")
+        $lg_retries = 0 
+        sub on_error: handle_provision_error($lg_retries) do
+          $lg_retries = $lg_retries + 1
+          provision(@@launch_task_lg)
+        end
+      end
+      
+    end
+
+    # Copy the globally-scoped resources back into the SS-scoped resources that we're returning
+    @lb_1 = @@launch_task_lb1
+    @db_1 = @@launch_task_db1
+    @server_array_1 = @@launch_task_array1
+    @load_generator = @@launch_task_lg
+end
+
+define handle_provision_error($count) do
+  call log("Handling provision error: " + $_error["message"], "Notification")
+  if $count < 5 
+    $_error_behavior = "retry"
+  end
+end
 #
-#define enable_application(@db_1, @server_array_1, $map_current_account, $map_account) do
-#  
-#  $cur_account = map($map_current_account, "current_account_name", "current_account")
-#  $restore_db_script = map( $map_account, $cur_account, "restore_db_script_href" )
-#  $create_db_login_script = map( $map_account, $cur_account, "create_db_login_script_href" )
-#  $restart_iis_script = map( $map_account, $cur_account, "restart_iis_script_href" )
-#  
-#  task_label("Restoring DB from backup file.")
-#  # call run_recipe(@db_1, "DB SQLS Restore database from local disk / Remote Storage (v13.5.0-LTS)")
-#  # call run_script(@db_1, "/api/right_scripts/524831004")
-#  call run_script(@db_1,  join(["/api/right_scripts/", $restore_db_script]))
+# Enable operation
 #
-#  task_label("Creating App login to the DB.")
-#  # call run_recipe(@db_1, "DB SQLS Create login (v13.5.0-LTS)")
-#  # call run_script(@db_1, "/api/right_scripts/524829004")
-#  call run_script(@db_1,  join(["/api/right_scripts/", $create_db_login_script]))
-#
-#  task_label("Restarting IIS so it can connect to DB.")
-#  # call run_recipe(@server_array_1, "IIS Restart application (v13.5.0-LTS)")
-#  # call multi_run_script(@server_array_1, "/api/right_scripts/524965004")
-#  call multi_run_script(@server_array_1,  join(["/api/right_scripts/", $restart_iis_script]))
-#
-#end
-#
-#define start_load(@load_generator, $map_current_account, $map_account) do
-#  task_label("Start load generation.")
-#  $cur_account = map($map_current_account, "current_account_name", "current_account")
-#  $siege_start_load = map( $map_account, $cur_account, "siege_start_load_href" )
-#  call run_script(@load_generator,  join(["/api/right_scripts/", $siege_start_load]))
-#end
-#
-#define stop_load(@load_generator, $map_current_account, $map_account) do
-#  task_label("Stop load generation.")
-#  $cur_account = map($map_current_account, "current_account_name", "current_account")
-#  $siege_stop_load = map( $map_account, $cur_account, "siege_stop_load_href" )
-#  call run_script(@load_generator,  join(["/api/right_scripts/", $siege_stop_load]))
-#end
+
+define enable_application(@db_1, @server_array_1, $map_current_account, $map_account) do
+  
+  $cur_account = map($map_current_account, "current_account_name", "current_account")
+  $restore_db_script = map( $map_account, $cur_account, "restore_db_script_href" )
+  $create_db_login_script = map( $map_account, $cur_account, "create_db_login_script_href" )
+  $restart_iis_script = map( $map_account, $cur_account, "restart_iis_script_href" )
+  
+  task_label("Restoring DB from backup file.")
+  # call run_recipe(@db_1, "DB SQLS Restore database from local disk / Remote Storage (v13.5.0-LTS)")
+  # call run_script(@db_1, "/api/right_scripts/524831004")
+  call run_script(@db_1,  join(["/api/right_scripts/", $restore_db_script]))
+
+  task_label("Creating App login to the DB.")
+  # call run_recipe(@db_1, "DB SQLS Create login (v13.5.0-LTS)")
+  # call run_script(@db_1, "/api/right_scripts/524829004")
+  call run_script(@db_1,  join(["/api/right_scripts/", $create_db_login_script]))
+
+  task_label("Restarting IIS so it can connect to DB.")
+  # call run_recipe(@server_array_1, "IIS Restart application (v13.5.0-LTS)")
+  # call multi_run_script(@server_array_1, "/api/right_scripts/524965004")
+  call multi_run_script(@server_array_1,  join(["/api/right_scripts/", $restart_iis_script]))
+
+end
+
+define start_load(@load_generator, $map_current_account, $map_account) do
+  task_label("Start load generation.")
+  $cur_account = map($map_current_account, "current_account_name", "current_account")
+  $siege_start_load = map( $map_account, $cur_account, "siege_start_load_href" )
+  call run_script(@load_generator,  join(["/api/right_scripts/", $siege_start_load]))
+end
+
+define stop_load(@load_generator, $map_current_account, $map_account) do
+  task_label("Stop load generation.")
+  $cur_account = map($map_current_account, "current_account_name", "current_account")
+  $siege_stop_load = map( $map_account, $cur_account, "siege_stop_load_href" )
+  call run_script(@load_generator,  join(["/api/right_scripts/", $siege_stop_load]))
+end
  
 #
 # Import DB operation
@@ -670,5 +672,59 @@ define server_definition_to_media_type(@server) return $media_type do
   # TODO: Should be able to assign this directly in the "else" block above once
   # https://bookiee.rightscale.com/browse/SS-739 is fixed
   $media_type["instance"] = $instance_hash
+end
+
+
+  
+####################
+# Helper functions #
+####################
+# Helper definition, runs a recipe on given server, waits until recipe completes or fails
+# Raises an error in case of failure
+define run_recipe(@target, $recipe_name) do
+  @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: {})
+  sleep_until(@task.summary =~ "^(completed|failed)")
+  if @task.summary =~ "failed"
+    raise "Failed to run " + $recipe_name
+  end
+end
+
+# Helper definition, runs a recipe on given server with the given inputs, waits until recipe completes or fails
+# Raises an error in case of failure
+define run_recipe_inputs(@target, $recipe_name, $recipe_inputs) do
+  @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: $recipe_inputs)
+  sleep_until(@task.summary =~ "^(completed|failed)")
+  if @task.summary =~ "failed"
+    raise "Failed to run " + $recipe_name
+  end
+end
+
+# Helper definition, runs a script on given server, waits until script completes or fails
+# Raises an error in case of failure
+define run_script(@target, $right_script_href) do
+  @task = @target.current_instance().run_executable(right_script_href: $right_script_href, inputs: {})
+  sleep_until(@task.summary =~ "^(completed|failed)")
+  if @task.summary =~ "failed"
+    raise "Failed to run " + $right_script_href
+  end
+end
+
+# Helper definition, runs a script on all instances in the array.
+# waits until script completes or fails
+# Raises an error in case of failure
+define multi_run_script(@target, $right_script_href) do
+  @task = @target.multi_run_executable(right_script_href: $right_script_href, inputs: {})
+  sleep_until(@task.summary =~ "^(completed|failed)")
+  if @task.summary =~ "failed"
+    raise "Failed to run " + $right_script_href
+  end
+end
+
+
+###
+# $notify acceptable values: None|Notification|Security|Error
+###
+define log($message, $notify) do
+  rs.audit_entries.create(notify: $notify, audit_entry: {auditee_href: @@deployment.href, summary: $message})
 end
 
