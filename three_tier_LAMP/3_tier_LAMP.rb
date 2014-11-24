@@ -71,7 +71,7 @@
 name "LAMP Dev Stack"
 rs_ca_ver 20131202
 short_description "![Lamp Stack](https://selfservice-demo.s3.amazonaws.com/lamp_logo.gif)\n
-Builds a scalable LAMP 3-tier website workload (using v14 server templates) along with a load generator server for testing."
+Builds a scalable LAMP 3-tier website workload along with a load generator server for testing."
 long_description "Deploys 3-tier website workload.\n
 User can select cloud, performance level, size of scaling array and whether or not to launch load generator server for testing.\n
 Once deployed, user can generate load against the workload to cause scaling. \n
@@ -227,38 +227,44 @@ end
 # OUTPUTS    #
 ##############
 
-#output "end2end_test" do
-#  label "Web Site" 
-#  category "Connect"
-#  default_value join(["http://", @lb_1.public_ip_address])
-#  description "Verifies access through LB #1 to App server and App server access to the DB server."
-#end
-#
-#output "haproxy_status" do
-#  label "Load Balancer Status Page" 
-#  category "Connect"
-#  default_value join(["http://", @lb_1.public_ip_address, "/haproxy-status"])
-#  description "Accesses Load Balancer status page"
-#end
+output "end2end_test" do
+  label "Basic Website test" 
+  category "Connect"
+  default_value join(["http://", @lb_1.public_ip_address],"/dbread")
+  description "Verifies access through LB #1 to App server and App server access to the DB server."
+end
+
+output "phpinfo" do
+  label "PHP Server Info" 
+  category "Connect"
+  default_value join(["http://", @lb_1.public_ip_address],"/phpinfo.php")
+  description "Displays given App server's PHP info."
+end
+
+output "haproxy_status" do
+  label "Load Balancer Status Page" 
+  category "Connect"
+  default_value join(["http://", @lb_1.public_ip_address, "/haproxy-status"])
+  description "Accesses Load Balancer status page"
+end
 
 ##############
 # RESOURCES  #
 ##############
 
-# TESTING DB DEPLOYMENT
-#resource "lb_1", type: "server" do
-#  name "Tier 1 - LB 1"
-#  cloud map( $map_cloud, $param_location, "cloud" )
-#  instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
-#  server_template find("Load Balancer with HAProxy (v13.5.5-LTS)", revision: 18)
-##  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
-##  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
-#  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
-#  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
-#  inputs do {
-#    "lb/session_stickiness" => "text:false",   
-#  } end
-#end
+resource "lb_1", type: "server" do
+  name "Tier 1 - LB 1"
+  cloud map( $map_cloud, $param_location, "cloud" )
+  instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
+  server_template find("Load Balancer with HAProxy (v13.5.5-LTS)", revision: 18)
+#  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
+#  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
+  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
+  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
+  inputs do {
+    "lb/session_stickiness" => "text:false",   
+  } end
+end
 
 resource "db_1", type: "server" do
   name "Tier 3 - DB 1"
@@ -321,27 +327,27 @@ resource "server_array_1", type: "server_array" do
     },
     "alert_specific_params" => {
       "decision_threshold"   => 51,
-      "voters_tag_predicate" => "Tier 2 - IIS App Server"
+      "voters_tag_predicate" => "Tier 2 - App Server"
     }
   } end
 end
 
-## Siege server
-#resource "load_generator", type: "server" do
-#  name "Load Generator"
-#  condition $deploySiege
-#  cloud map( $map_cloud, $param_location, "cloud" )
-#  instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
-#  server_template find("Siege Load Tester", revision: 32)
-#  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
-#  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
-#  inputs do {
-#    "SIEGE_TEST_URL" => "env:Tier 1 - LB 1:PRIVATE_IP",
-#    "SIEGE_TEST_CONCURRENT_USERS" => "text:200",
-#    "SIEGE_TEST_DURATION" => "text:45",
-#    "SIEGE_TEST_MAX_DELAY" => "text:2",
-#  } end
-#end
+# Siege server
+resource "load_generator", type: "server" do
+  name "Load Generator"
+  condition $deploySiege
+  cloud map( $map_cloud, $param_location, "cloud" )
+  instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
+  server_template find("Siege Load Tester", revision: 32)
+  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
+  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
+  inputs do {
+    "SIEGE_TEST_URL" => "env:Tier 1 - LB 1:PRIVATE_IP",
+    "SIEGE_TEST_CONCURRENT_USERS" => "text:200",
+    "SIEGE_TEST_DURATION" => "text:45",
+    "SIEGE_TEST_MAX_DELAY" => "text:2",
+  } end
+end
 
 ###############
 ## Operations #
@@ -355,21 +361,21 @@ end
 
 # executes automatically
 operation "enable" do
-  description "Initializes the master DB, imports a DB dump and restarts the IIS application."
+  description "Initializes the master DB, imports a DB dump and gets application running."
   definition "enable_application"
 end 
 
-#operation "start_load" do
-#  description "Generates load to cause scaling."
-#  condition $deploySiege
-#  definition "start_load"
-#end
-#
-#operation "stop_load" do
-#  description "Stops load generation."
-#  condition $deploySiege
-#  definition "stop_load"
-#end
+operation "start_load" do
+  description "Generates load to cause scaling."
+  condition $deploySiege
+  definition "start_load"
+end
+
+operation "stop_load" do
+  description "Stops load generation."
+  condition $deploySiege
+  definition "stop_load"
+end
 
 
 ##############
@@ -380,8 +386,7 @@ end
 # Launch operation
 #
 
-#define launch_concurrent(@lb_1, @db_1, @server_array_1, @load_generator) return @lb_1, @db_1, @server_array_1, @load_generator do
-define launch_concurrent(@db_1, @server_array_1) return @db_1, @server_array_1 do
+define launch_concurrent(@lb_1, @db_1, @server_array_1, @load_generator) return @lb_1, @db_1, @server_array_1, @load_generator do
     task_label("Launch servers concurrently")
 
     # Since we want to launch these in concurrent tasks, we need to use global resources
@@ -389,23 +394,23 @@ define launch_concurrent(@db_1, @server_array_1) return @db_1, @server_array_1 d
     #   to that task. Since we want to modify these particular resources, we copy them
     #   into global scope and copy them back at the end
     
-#    @@launch_task_lb1 = @lb_1
+    @@launch_task_lb1 = @lb_1
     @@launch_task_db1 = @db_1
     @@launch_task_array1 = @server_array_1
-#    @@launch_task_lg = @load_generator
+    @@launch_task_lg = @load_generator
 
     # Do just the DB and LB concurrently.
     # It may be the case that the DB server needs to be operational before the App server will work properly.
     # There's a known issue in DotNetNuke where it'll throw the under construction page if the DB server we restarted after the app server connected.
     concurrent do
-#      sub task_name:"Launch LB-1" do
-#        task_label("Launching LB-1")
-#        $lb1_retries = 0 
-#        sub on_error: handle_provision_error($lb1_retries) do
-#          $lb1_retries = $lb1_retries + 1
-#          provision(@@launch_task_lb1)
-#        end
-#      end
+      sub task_name:"Launch LB-1" do
+        task_label("Launching LB-1")
+        $lb1_retries = 0 
+        sub on_error: handle_provision_error($lb1_retries) do
+          $lb1_retries = $lb1_retries + 1
+          provision(@@launch_task_lb1)
+        end
+      end
       
       sub task_name:"Launch DB-1" do
         task_label("Launching DB-1")
@@ -425,23 +430,23 @@ define launch_concurrent(@db_1, @server_array_1) return @db_1, @server_array_1 d
           provision(@@launch_task_array1)
         end
       end
-#      
-#      sub task_name:"Launch Load Generator" do
-#        task_label("Launching Load Generator")
-#        $lg_retries = 0 
-#        sub on_error: handle_provision_error($lg_retries) do
-#          $lg_retries = $lg_retries + 1
-#          provision(@@launch_task_lg)
-#        end
-#      end
+      
+      sub task_name:"Launch Load Generator" do
+        task_label("Launching Load Generator")
+        $lg_retries = 0 
+        sub on_error: handle_provision_error($lg_retries) do
+          $lg_retries = $lg_retries + 1
+          provision(@@launch_task_lg)
+        end
+      end
       
     end
 
     # Copy the globally-scoped resources back into the SS-scoped resources that we're returning
-#    @lb_1 = @@launch_task_lb1
+    @lb_1 = @@launch_task_lb1
     @db_1 = @@launch_task_db1
     @server_array_1 = @@launch_task_array1
-#    @load_generator = @@launch_task_lg
+    @load_generator = @@launch_task_lg
 end
 
 define handle_provision_error($count) do
@@ -471,18 +476,18 @@ define enable_application(@db_1) do
 
 end
 
-#define start_load(@load_generator, $map_current_account, $map_account) do
-#  task_label("Start load generation.")
-#  $cur_account = map($map_current_account, "current_account_name", "current_account")
-#  $siege_start_load = map( $map_account, $cur_account, "siege_start_load_href" )
-#  call run_script(@load_generator,  join(["/api/right_scripts/", $siege_start_load]))
-#end
-#
-#define stop_load(@load_generator, $map_current_account, $map_account) do
-#  task_label("Stop load generation.")
-#  $cur_account = map($map_current_account, "current_account_name", "current_account")
-#  $siege_stop_load = map( $map_account, $cur_account, "siege_stop_load_href" )
-#  call run_script(@load_generator,  join(["/api/right_scripts/", $siege_stop_load]))
-#end
+define start_load(@load_generator, $map_current_account, $map_account) do
+  task_label("Start load generation.")
+  $cur_account = map($map_current_account, "current_account_name", "current_account")
+  $siege_start_load = map( $map_account, $cur_account, "siege_start_load_href" )
+  call run_script(@load_generator,  join(["/api/right_scripts/", $siege_start_load]))
+end
+
+define stop_load(@load_generator, $map_current_account, $map_account) do
+  task_label("Stop load generation.")
+  $cur_account = map($map_current_account, "current_account_name", "current_account")
+  $siege_stop_load = map( $map_account, $cur_account, "siege_stop_load_href" )
+  call run_script(@load_generator,  join(["/api/right_scripts/", $siege_stop_load]))
+end
 
 
