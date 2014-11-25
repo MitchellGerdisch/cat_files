@@ -277,7 +277,8 @@ resource "db_1", type: "server" do
   name "Tier 3 - DB 1"
   cloud map( $map_cloud, $param_location, "cloud" )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
-  server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS)", revision: 5)
+#  server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS)", revision: 5)
+  server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS) vTLS")
 #  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
 #  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
   ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
@@ -289,7 +290,6 @@ resource "db_1", type: "server" do
       "DATA_VOLUME_SIZE" => "text:10",
 # Issue preventing this from working, so using a simple work-around
       "DB_LINEAGE_NAME" => "text:selfservicedblineage",
-      "BACKUP_METHOD" => "text:Remote Storage", # other option is text:Snapshots but this is throwing an error due to API calls in the script
 #      "DB_LINEAGE_NAME" => join(["text:selfservice-demo-lineage-",@@deployment.href]),
       "DB_NAME" => "text:DotNetNuke",
       "DB_NEW_LOGIN_NAME" => "cred:SQL_APPLICATION_USER",
