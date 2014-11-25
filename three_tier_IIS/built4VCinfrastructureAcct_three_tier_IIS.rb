@@ -92,7 +92,7 @@ parameter "param_location" do
   type "string" 
   description "Cloud to deploy in." 
   allowed_values "AWS-US-East", "AWS-US-West"
-  default "AWS-US-East"
+  default "AWS-US-West"
 end
 
 parameter "param_performance" do 
@@ -683,6 +683,14 @@ end
 # Raises an error in case of failure
 define run_recipe(@target, $recipe_name) do
   @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: {})
+  sleep_until(@task.summary =~ "^(completed|failed)")
+  if @task.summary =~ "failed"
+    raise "Failed to run " + $recipe_name
+  end
+end
+
+define multi_run_recipe(@target, $recipe_name) do
+  @task = @target.multi_run_executable(recipe_name: $recipe_name, inputs: {})
   sleep_until(@task.summary =~ "^(completed|failed)")
   if @task.summary =~ "failed"
     raise "Failed to run " + $recipe_name

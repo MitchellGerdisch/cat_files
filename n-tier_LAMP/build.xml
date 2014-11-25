@@ -4,7 +4,7 @@
   <!-- The value of a property is accessed via ${} -->
   <property name="include.dir" location="../includes" />
   <property name="source.dir" location="." />
-  <property name="source.files" value="3_tier_LAMP.rb" />
+  <property name="source.files" value="n_tier_LAMP.rb" />
 
 
   <!-- Builds a single file (name is based on target.file above) consisting of:
@@ -16,7 +16,7 @@
   			to produce the final bigcat file.
   -->
   <target name="HybridCloud">
-    <property name="target.file" location="./built4HybridCloud_three_tier_LAMP.rb" />
+    <property name="target.file" location="./built4HybridCloud_n_tier_LAMP.rb" />
   	<delete file="${target.file}"/>
 	<concat destfile="${target.file}">
     	<fileset dir="${source.dir}"
@@ -32,7 +32,7 @@
   </target>
 	
   <target name="Sandbox">
-    <property name="target.file" location="./built4CseSandbox_three_tier_LAMP.rb" />
+    <property name="target.file" location="./built4CseSandbox_n_tier_LAMP.rb" />
   	<delete file="${target.file}"/>
 	<concat destfile="${target.file}">
     	<fileset dir="${source.dir}"
@@ -48,7 +48,7 @@
   </target>
 	
   <target name="VCinfrastructureAcct">
-    <property name="target.file" location="./built4VCinfrastructureAcct_three_tier_LAMP.rb" />
+    <property name="target.file" location="./built4VCinfrastructureAcct_n_tier_LAMP.rb" />
   	<delete file="${target.file}"/>
 	<concat destfile="${target.file}">
     	<fileset dir="${source.dir}"

@@ -92,7 +92,7 @@ parameter "param_location" do
   type "string" 
   description "Cloud to deploy in." 
   allowed_values "AWS-US-East", "AWS-US-West"
-  default "AWS-US-East"
+  default "AWS-US-West"
 end
 
 parameter "param_performance" do 
@@ -288,8 +288,9 @@ resource "db_1", type: "server" do
       "BACKUP_VOLUME_SIZE" => "text:10",
       "DATA_VOLUME_SIZE" => "text:10",
 # Issue preventing this from working, so using a simple work-around
+      "DB_LINEAGE_NAME" => "text:selfservicedblineage",
+      "BACKUP_METHOD" => "text:Remote Storage", # other option is text:Snapshots but this is throwing an error due to API calls in the script
 #      "DB_LINEAGE_NAME" => join(["text:selfservice-demo-lineage-",@@deployment.href]),
-      "DB_LINEAGE_NAME" => "text:selfservice-demo-lineage-vc-poc",
       "DB_NAME" => "text:DotNetNuke",
       "DB_NEW_LOGIN_NAME" => "cred:SQL_APPLICATION_USER",
       "DB_NEW_LOGIN_PASSWORD" => "cred:SQL_APPLICATION_PASSWORD",

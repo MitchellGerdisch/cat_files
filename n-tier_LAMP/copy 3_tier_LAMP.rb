@@ -71,7 +71,7 @@
 name "LAMP Dev Stack"
 rs_ca_ver 20131202
 short_description "![Lamp Stack](https://selfservice-demo.s3.amazonaws.com/lamp_logo.gif)\n
-Builds a scalable LAMP 3-tier website workload (using v14 server templates) along with a load generator server for testing."
+Builds a scalable LAMP 3-tier website workload along with a load generator server for testing."
 long_description "Deploys 3-tier website workload.\n
 User can select cloud, performance level, size of scaling array and whether or not to launch load generator server for testing.\n
 Once deployed, user can generate load against the workload to cause scaling. \n
@@ -173,10 +173,10 @@ end
 # TO-DO: Get account info from the environment and use the mapping accordingly.
 # REAL TO-DO: Once API support is avaiable in CATs, create the security groups, etc in real-time.
 # map($map_current_account, 'current_account_name', 'current_account')
-# _CSE Sandbox is replacd by the Ant build file with the applicable account name based on build target.
+# ___ACCOUNT_NAME__ is replacd by the Ant build file with the applicable account name based on build target.
 mapping "map_current_account" do {
   "current_account_name" => {
-    "current_account" => "CSE Sandbox",
+    "current_account" => "__ACCOUNT_NAME__",
   },
 }
 end
@@ -281,7 +281,7 @@ resource "db_1", type: "server" do
     'rs-mysql/server_root_password' => 'cred:MYSQL_ROOT_PASSWORD',
     'rs-mysql/application_password' => 'cred:MYSQL_APP_PASSWORD',
     'rs-mysql/application_username' => 'cred:MYSQL_APP_USERNAME',
-    'rs-mysql/backup/lineage' => 'text:selfservice-demo-lineage-test1124',
+ #   'rs-mysql/backup/lineage' => 'text:selfservice-demo-lineage-test1124',
     'rs-mysql/device/count' => 'text:1',
     'rs-mysql/device/destroy_on_decommission' => 'text:true',
     'rs-mysql/application_database_name' => 'text:app_test',
@@ -490,206 +490,4 @@ define stop_load(@load_generator, $map_current_account, $map_account) do
   call run_script(@load_generator,  join(["/api/right_scripts/", $siege_stop_load]))
 end
 
-
-
-  
-####################
-# Helper functions #
-####################
-# Helper definition, runs a recipe on given server, waits until recipe completes or fails
-# Raises an error in case of failure
-define run_recipe(@target, $recipe_name) do
-  @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: {})
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $recipe_name
-  end
-end
-
-# Helper definition, runs a recipe on given server with the given inputs, waits until recipe completes or fails
-# Raises an error in case of failure
-define run_recipe_inputs(@target, $recipe_name, $recipe_inputs) do
-  @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: $recipe_inputs)
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $recipe_name
-  end
-end
-
-# Helper definition, runs a script on given server, waits until script completes or fails
-# Raises an error in case of failure
-define run_script(@target, $right_script_href) do
-  @task = @target.current_instance().run_executable(right_script_href: $right_script_href, inputs: {})
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $right_script_href
-  end
-end
-
-# Helper definition, runs a script on all instances in the array.
-# waits until script completes or fails
-# Raises an error in case of failure
-define multi_run_script(@target, $right_script_href) do
-  @task = @target.multi_run_executable(right_script_href: $right_script_href, inputs: {})
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $right_script_href
-  end
-end
-
-####
-# Author: Ryan Geyer
-###
-define get_array_of_size($size) return $array do
-  $qty = 1
-  $qty_ary = []
-  while $qty <= to_n($size) do
-    $qty_ary << $qty
-    $qty = $qty + 1
-  end
-
-  $array = $qty_ary
-end
-
-####
-# Loggers
-# 
-# Author: Ryan Geyer
-####
-
-define log_this($message) do
-  rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: $message})
-end
- 
-###
-# $notify acceptable values: None|Notification|Security|Error
-###
-define log($message, $notify) do
-  rs.audit_entries.create(notify: $notify, audit_entry: {auditee_href: @@deployment.href, summary: $message})
-end
-
-define log_with_details($summary, $details, $notify) do
-  rs.audit_entries.create(notify: $notify, audit_entry: {auditee_href: @@deployment.href, summary: $summary, detail: $details})
-end
-
-####
-# get clouds
-#
-# Author: Ryan Geyer
-####
-define get_clouds_by_rel($rel) return @clouds do
-  @@clouds = rs.clouds.empty()
-  concurrent foreach @cloud in rs.clouds.get() do
-    $rels = select(@cloud.links, {"rel": $rel})
-    if size($rels) > 0
-      @@clouds = @@clouds + @cloud
-    end
-  end
-  @clouds = @@clouds
-end
-
-define get_execution_id() return $execution_id do
-  #selfservice:href=/api/manager/projects/12345/executions/54354bd284adb8871600200e
-  call get_tags_for_resource(@@deployment) retrieve $tags_on_deployment
-  $href_tag = concurrent map $current_tag in $tags_on_deployment return $tag do
-    if $current_tag =~ "(selfservice:href)"
-      $tag = $current_tag
-    end
-  end
-
-  if type($href_tag) == "array" && size($href_tag) > 0
-    $tag_split_by_value_delimiter = split(first($href_tag), "=")
-    $tag_value = last($tag_split_by_value_delimiter)
-    $value_split_by_slashes = split($tag_value, "/")
-    $execution_id = last($value_split_by_slashes)
-  else
-    $execution_id = "N/A"
-  end
-
-end
-
-# Author: Ryan Geyer
-#
-# Converts a server to an rs.servers.create(server: $return_hash) compatible hash
-#
-# @param @server [ServerResourceCollection] a Server collection containing one
-#   server (what happens if it contains more than one?) to be converted
-#
-# @return [Hash] a hash compatible with rs.servers.create(server: $return_hash)
-define server_definition_to_media_type(@server) return $media_type do
-  $top_level_properties = [
-    "deployment_href",
-    "description",
-    "name",
-    "optimized"
-  ]
-  $definition_hash = to_object(@server)
-  $media_type = {}
-  $instance_hash = {}
-  foreach $key in keys($definition_hash["fields"]) do
-    call log_with_details("Key "+$key, $key+"="+to_json($definition_hash["fields"][$key]), "None")
-    if contains?($top_level_properties, [$key])
-      $media_type[$key] = $definition_hash["fields"][$key]
-    else
-      $instance_hash[$key] = $definition_hash["fields"][$key]
-    end
-  end
-  # TODO: Should be able to assign this directly in the "else" block above once
-  # https://bookiee.rightscale.com/browse/SS-739 is fixed
-  $media_type["instance"] = $instance_hash
-end
-
-
-  
-####################
-# Helper functions #
-####################
-# Helper definition, runs a recipe on given server, waits until recipe completes or fails
-# Raises an error in case of failure
-define run_recipe(@target, $recipe_name) do
-  @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: {})
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $recipe_name
-  end
-end
-
-# Helper definition, runs a recipe on given server with the given inputs, waits until recipe completes or fails
-# Raises an error in case of failure
-define run_recipe_inputs(@target, $recipe_name, $recipe_inputs) do
-  @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: $recipe_inputs)
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $recipe_name
-  end
-end
-
-# Helper definition, runs a script on given server, waits until script completes or fails
-# Raises an error in case of failure
-define run_script(@target, $right_script_href) do
-  @task = @target.current_instance().run_executable(right_script_href: $right_script_href, inputs: {})
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $right_script_href
-  end
-end
-
-# Helper definition, runs a script on all instances in the array.
-# waits until script completes or fails
-# Raises an error in case of failure
-define multi_run_script(@target, $right_script_href) do
-  @task = @target.multi_run_executable(right_script_href: $right_script_href, inputs: {})
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $right_script_href
-  end
-end
-
-
-###
-# $notify acceptable values: None|Notification|Security|Error
-###
-define log($message, $notify) do
-  rs.audit_entries.create(notify: $notify, audit_entry: {auditee_href: @@deployment.href, summary: $message})
-end
 

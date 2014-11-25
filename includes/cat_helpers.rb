@@ -13,6 +13,14 @@ define run_recipe(@target, $recipe_name) do
   end
 end
 
+define multi_run_recipe(@target, $recipe_name) do
+  @task = @target.multi_run_executable(recipe_name: $recipe_name, inputs: {})
+  sleep_until(@task.summary =~ "^(completed|failed)")
+  if @task.summary =~ "failed"
+    raise "Failed to run " + $recipe_name
+  end
+end
+
 # Helper definition, runs a recipe on given server with the given inputs, waits until recipe completes or fails
 # Raises an error in case of failure
 define run_recipe_inputs(@target, $recipe_name, $recipe_inputs) do

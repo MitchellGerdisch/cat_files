@@ -33,7 +33,7 @@
 # PREREQUISITES:
 #   Imported Server Templates:
 #     Siege Load Tester, revision: 32
-#     Load Balancer with HAProxy (v13.5.5-LTS), revision: 18 
+#     Load Balancer with HAProxy (v14.1.0), revision: 36
 #     Database Manager for MySQL (v14.1.0), revision: 43
 #     PHP App Server (v14.1.0), revision: 36
 #       Cloned and alerts configured for scaling
@@ -87,7 +87,7 @@ parameter "param_location" do
   type "string" 
   description "Cloud to deploy in." 
   allowed_values "AWS-US-East", "AWS-US-West"
-  default "AWS-US-East"
+  default "AWS-US-West"
 end
 
 parameter "param_performance" do 
@@ -99,14 +99,14 @@ parameter "param_performance" do
   default "low"
 end
 
-parameter "param_data_file" do 
-  category "S3 info"
-  label "DB initial file" 
-  type "string" 
-  description "Initial file to use for DB" 
-  allowed_pattern "[a-z0-9][a-z0-9-_.]*"
-  default "DotNetNuke.bak"
-end
+#parameter "param_data_file" do 
+#  category "S3 info"
+#  label "DB initial file" 
+#  type "string" 
+#  description "Initial file to use for DB" 
+#  allowed_pattern "[a-z0-9][a-z0-9-_.]*"
+#  default "DotNetNuke.bak"
+#end
 
 parameter "array_min_size" do
   category "Application Server Array"
@@ -230,14 +230,14 @@ end
 output "end2end_test" do
   label "Basic Website test" 
   category "Connect"
-  default_value join(["http://", @lb_1.public_ip_address],"/dbread")
+  default_value join(["http://", @lb_1.public_ip_address,"/dbread"])
   description "Verifies access through LB #1 to App server and App server access to the DB server."
 end
 
 output "phpinfo" do
   label "PHP Server Info" 
   category "Connect"
-  default_value join(["http://", @lb_1.public_ip_address],"/phpinfo.php")
+  default_value join(["http://", @lb_1.public_ip_address,"/phpinfo.php"])
   description "Displays given App server's PHP info."
 end
 
@@ -256,13 +256,13 @@ resource "lb_1", type: "server" do
   name "Tier 1 - LB 1"
   cloud map( $map_cloud, $param_location, "cloud" )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
-  server_template find("Load Balancer with HAProxy (v13.5.5-LTS)", revision: 18)
+  server_template find("Load Balancer with HAProxy (v14.1.0)", revision: 36)
 #  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
 #  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
   ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
-    "lb/session_stickiness" => "text:false",   
+    "rs-haproxy/session_stickinessss" => "text:false",   
   } end
 end
 
@@ -312,6 +312,7 @@ resource "server_array_1", type: "server_array" do
     'rs-application_php/scm/repository' => 'text:git://github.com/rightscale/examples.git',
     'rs-application_php/scm/revision' => 'text:unified_php',
     'rs-application_php/listen_port' => 'text:8000',
+    'rs-application_php/vhost_path' => 'text:default',
   } end
   state "enabled"
   array_type "alert"
@@ -405,41 +406,26 @@ define launch_concurrent(@lb_1, @db_1, @server_array_1, @load_generator) return 
     concurrent do
       sub task_name:"Launch LB-1" do
         task_label("Launching LB-1")
-        $lb1_retries = 0 
-        sub on_error: handle_provision_error($lb1_retries) do
-          $lb1_retries = $lb1_retries + 1
-          provision(@@launch_task_lb1)
-        end
+        sleep(90)
+        provision(@@launch_task_lb1)
       end
       
       sub task_name:"Launch DB-1" do
         task_label("Launching DB-1")
-        $db1_retries = 0 
-        sub on_error: handle_provision_error($db1_retries) do
-          $db1_retries = $db1_retries + 1
-          provision(@@launch_task_db1)
-        end
+        provision(@@launch_task_db1)
       end
 
       sub task_name:"Provision Server Array" do
         task_label("Provision Server Array: Provisioning the array now.")
-        sleep(90) # Give the DB a chance to at least get created, App server needs its Private PRIVATE_IP
-        $app_retries = 0 
-        sub on_error: handle_provision_error($app_retries) do
-          $app_retries = $app_retries + 1
-          provision(@@launch_task_array1)
-        end
+        sleep(60) # Give the DB a chance to at least get created, App server needs its Private PRIVATE_IP
+        provision(@@launch_task_array1)
       end
       
       sub task_name:"Launch Load Generator" do
         task_label("Launching Load Generator")
-        $lg_retries = 0 
-        sub on_error: handle_provision_error($lg_retries) do
-          $lg_retries = $lg_retries + 1
-          provision(@@launch_task_lg)
-        end
+        sleep(120)
+        provision(@@launch_task_lg)
       end
-      
     end
 
     # Copy the globally-scoped resources back into the SS-scoped resources that we're returning
@@ -462,7 +448,7 @@ end
 #define enable_application(@db_1, @server_array_1) do
 define enable_application(@db_1) do
   
-  task_label("Enabling monitoring for MySQL.")
+  task_label("Enabling monitoring for MySQL server.")
   call run_recipe(@db_1, "rs-mysql::collectd")
   
   task_label("Configuring storage volume.")
@@ -473,6 +459,14 @@ define enable_application(@db_1) do
   
   task_label("Restoring DB from backup file.")
   call run_recipe(@db_1, "rs-mysql::dump_import")
+  
+#  app server tasks
+#  rs-application_php::tags
+#  
+#  LB tasks:
+#  rs-haproxy::tags
+#  rs-haproxy::frontend
+#  rs-haproxy::schedule
 
 end
 
