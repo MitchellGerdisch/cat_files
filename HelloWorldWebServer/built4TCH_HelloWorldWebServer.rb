@@ -118,7 +118,6 @@ end
 
 mapping "map_account" do {
   "TCH_CorpIT_ServerTeam" => {
-    "security_group" => "default",
     "ssh_key" => "awsslxcl01a",
     "hello_world_script" => "531532004",
   },
@@ -153,13 +152,48 @@ end
 # RESOURCES  #
 ##############
 
+resource "sec_group", type: "security_group" do
+  name join(["HelloWorldSecGrp-",@@deployment.href])
+  description "Hello World web server security group."
+  cloud "EC2 us-west-1"
+end
+
+resource "sec_group_rule_http", type: "security_group_rule" do
+  name "HelloWorld Security Group HTTP Rule"
+  description "Allow HTTP access."
+  source_type "cidr_ips"
+  security_group @sec_group
+  protocol "tcp"
+  direction "ingress"
+  cidr_ips "0.0.0.0/0"
+  protocol_details do {
+    "start_port" => "80",
+    "end_port" => "80"
+  } end
+end
+
+resource "sec_group_rule_ssh", type: "security_group_rule" do
+  name "HelloWorld Security Group SSH Rule"
+  description "Allow SSH access."
+  source_type "cidr_ips"
+  security_group @sec_group
+  protocol "tcp"
+  direction "ingress"
+  cidr_ips "0.0.0.0/0"
+  protocol_details do {
+    "start_port" => "22",
+    "end_port" => "22"
+  } end
+end
+
+
 resource "web_server", type: "server" do
   name "Hello World Web Server"
   cloud map( $map_cloud, $param_location, "cloud" )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
   server_template find("Hello World Web Server", revision: 1)
   ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
-  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
+  security_groups @sec_group
   inputs do {
     "WEBTEXT" => join(["text:", $param_webtext])
   } end
@@ -184,13 +218,13 @@ end
 #
 # Modify the web page text
 #
-define update_webtext(@web_server, $param_webtext) do
+define update_webtext(@web_server, $map_current_account, $map_account, $param_webtext) do
   task_label("Update Web Page")
   
   $cur_account = map($map_current_account, "current_account_name", "current_account")
   $hello_world_script = map( $map_account, $cur_account, "hello_world_script" )
   
-  call run_script(@web_server,  join(["/api/right_scripts/", $hello_world_script]), $param_webtext) 
+  call run_script(@web_server,  join(["/api/right_scripts/", $hello_world_script]), {WEBTEXT: "text:"+$param_webtext}) 
 end
 
 
