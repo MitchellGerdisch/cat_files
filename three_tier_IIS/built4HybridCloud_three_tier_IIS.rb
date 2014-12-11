@@ -98,8 +98,8 @@ parameter "param_location" do
   label "Cloud" 
   type "string" 
   description "Cloud to deploy in." 
-  allowed_values "AWS-US-East", "AWS-US-West"
-  default "AWS-US-West"
+  allowed_values "AWS-Australia", "AWS-Brazil", "AWS-Japan", "AWS-USA", "Azure-Netherlands", "Azure-Singapore", "Azure-USA"
+  default "AWS-USA"
 end
 
 parameter "param_performance" do 
@@ -169,18 +169,39 @@ mapping "map_instance_type" do {
 }
 end
 
-# Customized for VC POC to represent AWS clouds where things are set up for the CAT (e.g. SSH keys)
 mapping "map_cloud" do {
-  "AWS-US-East" => {
+  "AWS-Australia" => {
     "provider" => "AWS",
-    "cloud" => "us-east-1",
+    "cloud" => "ap-southeast-2",
   },
-  "AWS-US-West" => {
+  "AWS-Brazil" => {
+    "provider" => "AWS",
+    "cloud" => "sa-east-1",
+  },
+  "Azure-Netherlands" => {
+    "provider" => "Azure",
+    "cloud" => "Azure West Europe",
+  },
+  "AWS-Japan" => {
+    "provider" => "AWS",
+    "cloud" => "ap-northeast-1",
+  },
+  "Azure-Singapore" => {
+    "provider" => "Azure",
+    "cloud" => "Azure Southeast Asia",
+  },
+  "AWS-USA" => {
     "provider" => "AWS",
     "cloud" => "us-west-1",
   },
+  "Azure-USA" => {   
+   "provider" => "Azure",
+    "cloud" => "Azure East US",
+  },
 }
 end
+
+
 
 # TO-DO: Get account info from the environment and use the mapping accordingly.
 # REAL TO-DO: Once API support is avaiable in CATs, create the security groups, etc in real-time.
@@ -371,7 +392,7 @@ resource "load_generator", type: "server" do
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
     "SIEGE_TEST_URL" => "env:Tier 1 - LB 1:PRIVATE_IP",
-    "SIEGE_TEST_CONCURRENT_USERS" => "text:200",
+    "SIEGE_TEST_CONCURRENT_USERS" => "text:100", 
     "SIEGE_TEST_DURATION" => "text:45",
     "SIEGE_TEST_MAX_DELAY" => "text:2",
   } end

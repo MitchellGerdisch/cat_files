@@ -32,10 +32,18 @@
 #
 # PREREQUISITES:
 #   Imported Server Templates:
+#     Siege Load Tester, revision: 32
 #     Load Balancer with HAProxy (v13.5.5-LTS), revision: 18 
 #     Database Manager for Microsoft SQL Server (13.5.1-LTS), revision: 5
+#       Cloned and modified to use modified rightscript as follows:
+#         Find the "RightScript SYS Install RightScale Powershell library (v13.5.0-LTS)" rightscript
+#           Clone it and name it "RightScript SYS Install RightScale Powershell library (v13.5.0-LTS) vTLS"
+#           Go to Attachments tab and upload the RsPsLib.tgz file found here: ttps://github.com/MitchellGerdisch/demo_support_files/blob/master/RsPsLib.tgz
+#         Find the Database Manager for Microsoft SQL Server (13.5.1-LTS) server template
+#           Clone it and name it "Database Manager for Microsoft SQL Server (13.5.1-LTS) vTLS"
+#           Go to righscripts and replace the existing SYS Install RightScale Powershell library with the one from the vTLS version you just created
 #     Microsoft IIS App Server (v13.5.0-LTS), revision: 3
-#       Cloned and alerts configured for scaling - needed until I can figure out how to do it in CAT for the array itself.
+#       Cloned and alerts configured for scaling
 #       Name it: Microsoft IIS App Server (v13.5.0-LTS) scaling
 #       Modify it:
 #         Create Alerts:
@@ -58,6 +66,7 @@
 #   SSH Key - see mapping for proper names or to change accordingly.
 #   Security Group that is pretty wide open that covers all the VMs - see mapping for name.
 #     ports: 80, 8000, 1433, 3389
+#     TODO: Use new security groups resource type to create specific security groups for the tiers.
 #   The usual set of credentials as per the tutorial which are likely already available in the account.
 #     WINDOWS_ADMIN_PASSWORD - Password used by user, Administrator to login to the windows VMs.
 #     SQL_APPLICATION_USER - SQL database user with login privileges to the specified user database.
@@ -76,7 +85,7 @@ rs_ca_ver 20131202
 short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)\n
 Builds a scalable HAproxy - IIS - MS_SQL 3-tier website workload along with a load generator server for testing."
 long_description "Deploys 3-tier website workload.\n
-User can select AWS or Azure cloud, performance level, size of scaling array and whether or not to launch load generator server for testing.\n
+User can select the cloud, performance level, size of scaling array and whether or not to launch load generator server for testing.\n
 Once deployed, user can generate load against the workload to cause scaling. \n
 The load will run for 45 minutes unless stopped by the user."
 
@@ -142,9 +151,9 @@ end
 
 mapping "map_instance_type" do {
   "AWS" => {
-    "low" => "c3.large",  
-    "medium" => "c3.xlarge", # 4 CPUs x 7GB
-    "high" => "c3.2xlarge", # 8 CPUs x 15GB
+    "low" => "m3.medium",  
+    "medium" => "c3.large", 
+    "high" => "c3.xlarge", 
   },
   "RS" => {
     # These choices are driven by what is configured for RS London cloud in RS.
@@ -186,11 +195,13 @@ mapping "map_cloud" do {
     "cloud" => "us-west-1",
   },
   "Azure-USA" => {   
-    "provider" => "Azure",
+   "provider" => "Azure",
     "cloud" => "Azure East US",
   },
 }
 end
+
+
 
 # TO-DO: Get account info from the environment and use the mapping accordingly.
 # REAL TO-DO: Once API support is avaiable in CATs, create the security groups, etc in real-time.
@@ -223,6 +234,16 @@ mapping "map_account" do {
     "restart_iis_script_href" => "527791003",
     "siege_start_load_href" => "443613001",
     "siege_stop_load_href" => "443616001",
+  },
+  "VC infrastructure" => {
+    "security_group" => "IIS_3tier_default_SecGrp", # TODO: Use CAT security group resource type to define security groups for each tier in CAT.
+    "ssh_key" => "default",
+    "s3_bucket" => "vc-poc", 
+    "restore_db_script_href" => "530553004",
+    "create_db_login_script_href" => "530545004",
+    "restart_iis_script_href" => "530585004",
+    "siege_start_load_href" => "530594004",
+    "siege_stop_load_href" => "530595004",
   },
 }
 end
@@ -284,7 +305,8 @@ resource "db_1", type: "server" do
   name "Tier 3 - DB 1"
   cloud map( $map_cloud, $param_location, "cloud" )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
-  server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS)", revision: 5)
+#  server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS)", revision: 5)
+  server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS) vTLS")
 #  security_groups map( $map_account, map($map_current_account, "current_account_name", "current_account"), "security_group" )
 #  ssh_key map( $map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key" )
   ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
@@ -294,7 +316,9 @@ resource "db_1", type: "server" do
       "BACKUP_FILE_NAME" => "text:DotNetNuke.bak",
       "BACKUP_VOLUME_SIZE" => "text:10",
       "DATA_VOLUME_SIZE" => "text:10",
-      "DB_LINEAGE_NAME" => join(["text:selfservice-demo-lineage-",@@deployment.href]),
+# Issue preventing this from working, so using a simple work-around
+      "DB_LINEAGE_NAME" => "text:selfservicedblineage",
+#      "DB_LINEAGE_NAME" => join(["text:selfservice-demo-lineage-",@@deployment.href]),
       "DB_NAME" => "text:DotNetNuke",
       "DB_NEW_LOGIN_NAME" => "cred:SQL_APPLICATION_USER",
       "DB_NEW_LOGIN_PASSWORD" => "cred:SQL_APPLICATION_PASSWORD",
@@ -368,7 +392,7 @@ resource "load_generator", type: "server" do
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
     "SIEGE_TEST_URL" => "env:Tier 1 - LB 1:PRIVATE_IP",
-    "SIEGE_TEST_CONCURRENT_USERS" => "text:200",
+    "SIEGE_TEST_CONCURRENT_USERS" => "text:100", 
     "SIEGE_TEST_DURATION" => "text:45",
     "SIEGE_TEST_MAX_DELAY" => "text:2",
   } end
@@ -526,11 +550,10 @@ end
 # Import DB operation
 #
 
-define import_db_dump(@db_1) do
-  task_label("Import the DB dump")
-  call run_recipe(@db_1, "db::do_dump_import")  
-end
-
+#define import_db_dump(@db_1) do
+#  task_label("Import the DB dump")
+#  call run_recipe(@db_1, "db::do_dump_import")  
+#end
 
   
 ####################
