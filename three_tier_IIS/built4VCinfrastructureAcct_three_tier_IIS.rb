@@ -35,6 +35,13 @@
 #     Siege Load Tester, revision: 32
 #     Load Balancer with HAProxy (v13.5.5-LTS), revision: 18 
 #     Database Manager for Microsoft SQL Server (13.5.1-LTS), revision: 5
+#       Cloned and modified to use modified rightscript as follows:
+#         Find the "RightScript SYS Install RightScale Powershell library (v13.5.0-LTS)" rightscript
+#           Clone it and name it "RightScript SYS Install RightScale Powershell library (v13.5.0-LTS) vTLS"
+#           Go to Attachments tab and upload the RsPsLib.tgz file found here: ttps://github.com/MitchellGerdisch/demo_support_files/blob/master/RsPsLib.tgz
+#         Find the Database Manager for Microsoft SQL Server (13.5.1-LTS) server template
+#           Clone it and name it "Database Manager for Microsoft SQL Server (13.5.1-LTS) vTLS"
+#           Go to righscripts and replace the existing SYS Install RightScale Powershell library with the one from the vTLS version you just created
 #     Microsoft IIS App Server (v13.5.0-LTS), revision: 3
 #       Cloned and alerts configured for scaling
 #       Name it: Microsoft IIS App Server (v13.5.0-LTS) scaling
@@ -364,7 +371,7 @@ resource "load_generator", type: "server" do
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
     "SIEGE_TEST_URL" => "env:Tier 1 - LB 1:PRIVATE_IP",
-    "SIEGE_TEST_CONCURRENT_USERS" => "text:200",
+    "SIEGE_TEST_CONCURRENT_USERS" => "text:100",
     "SIEGE_TEST_DURATION" => "text:45",
     "SIEGE_TEST_MAX_DELAY" => "text:2",
   } end

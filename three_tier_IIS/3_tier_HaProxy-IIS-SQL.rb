@@ -371,7 +371,7 @@ resource "load_generator", type: "server" do
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
     "SIEGE_TEST_URL" => "env:Tier 1 - LB 1:PRIVATE_IP",
-    "SIEGE_TEST_CONCURRENT_USERS" => "text:200",
+    "SIEGE_TEST_CONCURRENT_USERS" => "text:100",
     "SIEGE_TEST_DURATION" => "text:45",
     "SIEGE_TEST_MAX_DELAY" => "text:2",
   } end
