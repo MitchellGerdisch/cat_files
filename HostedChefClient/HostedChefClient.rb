@@ -269,5 +269,13 @@ end
 #
 define apply_role(@client_server, $param_role) do
   task_label("Apply role")
+  call log_this("Updating INPUT to " + $param_role)
+  $inp = {
+     "chef/client/roles": join(["text:", $param_role])
+   }
+   @client_server.current_instance().multi_update_inputs(inputs: $inp)
+  #@client_server.update(inputs:[{ "name":"Set of Client Roles", "value":join(["text:", $param_role])}])
+  call log_this("Running recipe to apply new role " + $param_role)
+  # I don't think I need to pass an input in this case since I just modified it for the instance in the previous step.
   call run_recipe_inputs(@client_server, "chef::do_client_converge", { "chef/client/roles": join(["text:", $param_role]) })  
 end
