@@ -117,10 +117,10 @@ mapping "map_cloud" do {
 }
 end
 
-# ___ACCOUNT_NAME__ is replacd by the Ant build file with the applicable account name based on build target.
+# _CSE_Sandbox is replacd by the Ant build file with the applicable account name based on build target.
 mapping "map_current_account" do {
   "current_account_name" => {
-    "current_account" => "__ACCOUNT_NAME__",
+    "current_account" => "CSE_Sandbox",
   },
 }
 end

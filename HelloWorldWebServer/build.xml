@@ -25,6 +25,20 @@
   		flags="g"
   	/>
   </target>
+	
+  <target name="MitchLabTesting">
+    <property name="target.file" location="./built4mitchlab_HelloWorldWebServer.rb" />
+  	<delete file="${target.file}"/>
+	<concat destfile="${target.file}">
+    	<fileset dir="${source.dir}"
+         	includes="${source.files}" />
+	</concat>
+  	<replaceregexp file="${target.file}"
+  		match="__ACCOUNT_NAME__"
+  		replace="CSE_Sandbox" 
+  		flags="g"
+  	/>
+  </target>
 
   
   <target name="main" depends="TechnicolorTraining">
