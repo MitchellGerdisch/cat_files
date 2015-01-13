@@ -146,3 +146,11 @@ define server_definition_to_media_type(@server) return $media_type do
   $media_type["instance"] = $instance_hash
 end
 
+### Provision Error Handler
+define handle_provision_error($count) do
+  call log("Handling provision error: " + $_error["message"], "Notification")
+  if $count < 5 
+    $_error_behavior = "retry"
+  end
+end
+
