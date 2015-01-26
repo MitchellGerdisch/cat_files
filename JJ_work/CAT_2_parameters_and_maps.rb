@@ -31,10 +31,24 @@ end
 
 parameter "db_instance_class" do
   type "string"
-  label "Performance level"
+  label "Server Performance level"
   allowed_values "Low performance", "Standard performance", "High performance"
   category "Database Tier"
   default "Standard performance"
+end
+
+parameter "db_storage_class" do
+  type "string"
+  label "Storage Performance level"
+  allowed_values "Low performance", "Standard performance", "Provisioned IOPS (expert use)"
+  category "Database Tier"
+  default "Standard performance"
+end
+
+parameter "db_storage_iops" do
+  type "number"
+  label "Provisioned IOPS setting (expert use)"
+  category "Database Tier"
 end
 
 parameter "db_allocated_storage" do
@@ -73,7 +87,12 @@ mapping "parameter_maps" do {
  	"db_az_option" => {
  		"Enabled" => "multi-az",
  		"Disabled" => "no-multi=az",
- 	}
+ 	},
+  "db_storage_class" => {
+    "Low performance" => "standard",
+    "Standard performance" => "gp2",
+    "Provisioned IOPS (expert use)" => "io1"
+  }
 }
 end
 
@@ -106,6 +125,20 @@ output "output_db_instance_class" do
   category "Database Tier"
   default_value $db_instance_class
   description "Selected performance level"
+end
+
+output "output_db_storage_class" do
+  label "Storage Performance level"
+  category "Database Tier"
+  default_value $db_storage_class
+  description "Selected storage performance level" 
+end
+
+output "output_db_storage_iops" do
+  label "Provisioned IOPS setting (expert use)"
+  category "Database Tier"
+  default_value $db_storage_iops
+  description "Selected storage IOPS"
 end
 
 output "output_db_allocated_storage" do
