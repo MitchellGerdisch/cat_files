@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<project name="CAT" default="main" basedir=".">
+  <!-- Sets variables which can later be used. -->
+  <!-- The value of a property is accessed via ${} -->
+  <property name="include.dir" location="../../cat_files/includes" />
+  <property name="source.dir" location="." />
+  <property name="source.files" value="windows_across_clouds.rb" />
+
+
+  <!-- Builds a single file (name is based on target.file above) consisting of:
+  		- All .rb files in this directory, and then 
+  		- All files (of any type) in the includes directory a layer above.
+  -->
+  <!-- TO-DOs:
+  		- Multi-stage build which uses regexp capability to insert, say, mappings into the main .rb file and then do the final concat
+  			to produce the final bigcat file.
+  -->
+	
+  <target name="Sandbox">
+    <property name="target.file" location="./built4CseSandbox_WindowsAcrossClouds.rb" />
+  	<delete file="${target.file}"/>
+	<concat destfile="${target.file}">
+    	<fileset dir="${source.dir}"
+         	includes="${source.files}" />
+		<fileset dir="${include.dir}"
+			includes="*" />
+	</concat>
+  	<replaceregexp file="${target.file}"
+  		match="__ACCOUNT_NAME__"
+  		replace="CSE Sandbox"
+  		flags="g"
+	/>
+  </target>
+  
+  <target name="HybridCloud">
+    <property name="target.file" location="./built4HybridCloud_WindowsAcrossClouds.rb" />
+  	<delete file="${target.file}"/>
+	<concat destfile="${target.file}">
+    	<fileset dir="${source.dir}"
+         	includes="${source.files}" />
+		<fileset dir="${include.dir}"
+			includes="*" />
+	</concat>
+  	<replaceregexp file="${target.file}"
+  		match="__ACCOUNT_NAME__"
+  		replace="Hybrid Cloud"
+  		flags="g"
+	/>
+  </target>
+  <target name="main" depends="Sandbox">
+    <description>Main target</description>
+  </target>
+
+</project> 
