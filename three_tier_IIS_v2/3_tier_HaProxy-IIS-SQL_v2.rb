@@ -342,6 +342,13 @@ end
 operation "start" do
   description "Used to restart servers after stopping them."
   definition "start_servers"
+  
+  # Update the links provided in the outputs.
+  output_mappings do {
+    $end2end_test => join(["http://", @lb_1.public_ip_address]),
+    $haproxy_status => join(["http://", @lb_1.public_ip_address, "/haproxy-status"])
+  } end
+  
 end
 
 operation "stop" do
@@ -454,6 +461,34 @@ define start_servers(@lb_1, @db_1, @server_array_1) do
   @lb_1.current_instance().start()
   @server_array_1.current_instances().start()
   @db_1.current_instance().start()
+  
+  # Wait until LB is up so that we can scrape the IP address for the output mapping.
+  sleep_until(@lb_1.state == "operational" || @lb_1.state == "stranded")
+  if @lb_1.state == "stranded"
+    call log("Terminating Server:"+@lb_1.name+" | "+@lb_1.state+"=@lb_1.state")
+    @lb_1.terminate()
+    sleep_until(@lb_1.state == "inactive")
+    raise "Instance stranded"
+  end
+  
+  # And make sure the DB tier is good to go
+  sleep_until(@db_1.state == "operational" || @db_1.state == "stranded")
+  if @db_1.state == "stranded"
+    call log("Terminating Server:"+@db_1.name+" | "+@db_1.state+"=@lb_1.state")
+    @db_1.terminate()
+    sleep_until(@db_1.state == "inactive")
+    raise "Instance stranded"
+  end
+    
+  # Now wait until the Application tier is good to go.
+  sleep_until(@server_array_1.current_instances().state == "operational" || @server_array_1.current_instances().state == "stranded")
+  if (@server_array_1.current_instances().state == "operational")
+    task_label("Restarting IIS so it can connect to DB.")
+    call multi_run_script(@server_array_1,  join(["/api/right_scripts/", $restart_iis_script]))
+  else
+    raise "Server array instance(s) stranded"
+  end
+
 end
 
 define stop_servers(@lb_1, @db_1, @server_array_1) do
@@ -463,6 +498,9 @@ define stop_servers(@lb_1, @db_1, @server_array_1) do
   @lb_1.current_instance().stop()
   @server_array_1.current_instances().stop()
   @db_1.current_instance().stop()
+  
+  # Now wait for the instances to be stopped
+  sleep_until(@server_array_1.current_instances().state == "provisioned" && @lb_1.state == "provisioned" && @db_1.state == "provisioned")
 end
 
 define scale_out_array(@server_array_1) do
