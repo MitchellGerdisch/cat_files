@@ -173,10 +173,10 @@ end
 # TO-DO: Get account info from the environment and use the mapping accordingly.
 # REAL TO-DO: Once API support is avaiable in CATs, create the security groups, etc in real-time.
 # map($map_current_account, 'current_account_name', 'current_account')
-# _Hybrid Cloud is replacd by the Ant build file with the applicable account name based on build target.
+# _CSE Sandbox is replacd by the Ant build file with the applicable account name based on build target.
 mapping "map_current_account" do {
   "current_account_name" => {
-    "current_account" => "Hybrid Cloud",
+    "current_account" => "CSE Sandbox",
   },
 }
 end
@@ -438,9 +438,8 @@ define enable_application(@db_1, @server_array_1, $map_current_account, $map_acc
   $restart_iis_script = map( $map_account, $cur_account, "restart_iis_script_href" )
   
   task_label("Restoring DB from backup file.")
-  # call run_recipe(@db_1, "DB SQLS Restore database from local disk / Remote Storage (v13.5.0-LTS)")
-  # call run_script(@db_1, "/api/right_scripts/524831004")
-  call run_script(@db_1,  join(["/api/right_scripts/", $restore_db_script]))
+  @task = @db_1.current_instance().run_executable(right_script_href: join(["/api/right_scripts/", $restore_db_script]), inputs: {})
+  sleep_until(@task.summary =~ "^(completed|failed)")
 
   task_label("Creating App login to the DB.")
   # call run_recipe(@db_1, "DB SQLS Create login (v13.5.0-LTS)")
@@ -454,8 +453,12 @@ define enable_application(@db_1, @server_array_1, $map_current_account, $map_acc
 
 end
 
-define start_servers(@lb_1, @db_1, @server_array_1) do
+define start_servers(@lb_1, @db_1, @server_array_1,  $map_current_account, $map_account) do
   task_label("Starting the servers in the Application.")
+  
+  $cur_account = map($map_current_account, "current_account_name", "current_account")
+  $restart_iis_script = map( $map_account, $cur_account, "restart_iis_script_href" )
+  
   # enable the server array for scaling
   @server_array_1.update(server_array: { state: "enabled"})
   @lb_1.current_instance().start()
@@ -493,10 +496,16 @@ end
 
 define stop_servers(@lb_1, @db_1, @server_array_1) do
   task_label("Stopping the servers in the Application.")
+  
   # disable the server array for scaling
   @server_array_1.update(server_array: { state: "disabled"})
+  foreach @server in @server_array_1.current_instances() do
+    if (@server.state == "operational")
+        @server.stop()
+    end
+  end
+  
   @lb_1.current_instance().stop()
-  @server_array_1.current_instances().stop()
   @db_1.current_instance().stop()
   
   # Now wait for the instances to be stopped
@@ -511,8 +520,19 @@ end
 
 define scale_in_array(@server_array_1) do
   task_label("Scale in application server array.")
-  @first_server = first(@server_array_1.current_instances())
-  @first_server.terminate()
+  $found_terminatable_server = false
+  
+  foreach @server in @server_array_1.current_instances() do
+    if (!$found_terminatable_server) && (@server.state == "operational" || @server.state == "stranded")
+      rs.audit_entries.create(audit_entry: {auditee_href: @server.href, summary: "Scale In: terminating server, " + @server.href + " which is in state, " + @server.state})
+      @server.terminate()
+      $found_terminatable_server = true
+    end
+  end
+  
+  if (!$found_terminatable_server)
+    rs.audit_entries.create(audit_entry: {auditee_href: @server_array_1.href, summary: "Scale In: No terminatable server currently found in the server array"})
+  end
 end
  
 
