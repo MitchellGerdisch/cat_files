@@ -460,7 +460,6 @@ define start_servers(@lb_1, @db_1, @server_array_1,  $map_current_account, $map_
   $restart_iis_script = map( $map_account, $cur_account, "restart_iis_script_href" )
   
   # enable the server array for scaling
-  @server_array_1.update(server_array: { state: "enabled"})
   @lb_1.current_instance().start()
   @server_array_1.current_instances().start()
   @db_1.current_instance().start()
@@ -491,6 +490,9 @@ define start_servers(@lb_1, @db_1, @server_array_1,  $map_current_account, $map_
   else
     raise "Server array instance(s) stranded"
   end
+  
+  # Now that everything is happy, re-enable the server array
+  @server_array_1.update(server_array: { state: "enabled"})
 
 end
 
