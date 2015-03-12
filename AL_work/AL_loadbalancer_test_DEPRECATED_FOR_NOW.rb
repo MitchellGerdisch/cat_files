@@ -1,3 +1,20 @@
+#
+# Name: HAProxy + RL10 Hello World Webservers
+# 
+# Description:
+# Builds an HAproxy LB and a server array consisting of a set of hello world web servers.
+# The hello world web servers are based on RL10.
+#
+# Prerequisites:
+#   Load Balancer:
+#     HAProxy servertemplate must be imported into the account.
+#   Application Tier:
+#     A modified version of the RL10 Base Linux Server servertemplate needs to be set up in the account as follows:
+#       Add this rightscript to the end of the boot sequence: https://github.com/MitchellGerdisch/rightscripts/raw/master/rl10_app_server_tagging_rs-api
+#       Add this rightscript after the previous rightscript in the boot sequence: 
+#### NOT DONE YET .... ####
+
+
 name 'LoadBalancerTest'
 rs_ca_ver 20131202
 short_description 'LoadBalancerTest'

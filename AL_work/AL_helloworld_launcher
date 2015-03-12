@@ -1,0 +1,54 @@
+name 'Angies List - Launch HelloWorld Servers'
+rs_ca_ver 20131202
+short_description "![Hello World](https://d3oypxn00j2a10.cloudfront.net/0.10.3/img/nav/docker-logo-loggedout.png)\n
+Angies List - Launch HelloWorld Docker Servers"
+
+# PARAMETERS
+parameter 'param_server_count' do
+  category 'Configuration'
+  label 'Number of servers to launch.'
+  type 'number'
+  default 1
+end
+
+
+# RESOURCES
+resource 'server', type: 'server' do
+  name 'helloworld'
+  cloud 'EC2 us-east-1'
+  ssh_key 'adam.alexander'
+  subnets find(resource_uid: 'subnet-7eb8e638', network_href: '/api/networks/E3118NLDQQGGH')
+  security_groups 'httpandssh'
+  server_template find('helloworld', revision: 1)
+  instance_type 'm3.medium'
+  multi_cloud_image find('dockercompose', revision: 2)
+end
+
+# OPERATIONS
+operation 'launch' do
+  definition 'generated_launch'
+end
+
+# DEFINITIONS
+define generate_name($base_name) return $server_name do
+  $server_name=join([$base_name,'-',uuid()[0..8]])
+end
+
+define generated_launch(@server,$param_server_count) return @server do
+  #generate names and add to a hash
+  $names_array = []
+  while $param_server_count !=0 do
+#    call generate_name("helloworld") retrieve $server_name
+    $server_name = join(['helloworld-',$param_server_count])
+    $names_array << $server_name
+    $param_server_count=$param_server_count-1
+  end
+
+  #use the hash to concurrently launch each server with a name
+  concurrent foreach $server_name in $names_array do
+    $server_hash=to_object(@server)
+    $server_hash["fields"]["name"]=$server_name
+    @server=$server_hash
+    provision(@server)
+  end
+end

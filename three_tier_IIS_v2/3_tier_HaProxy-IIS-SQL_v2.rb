@@ -266,10 +266,11 @@ resource "db_1", type: "server" do
       "BACKUP_FILE_NAME" => "text:DotNetNuke.bak",
       "BACKUP_VOLUME_SIZE" => "text:10",
       "DATA_VOLUME_SIZE" => "text:10",
-      "DB_LINEAGE_NAME" => "text:selfservicedblineage",
+      "DB_LINEAGE_NAME" => "text:garbage_name", # "text:selfservicedblineage",
       "DB_NAME" => "text:DotNetNuke",
       "DB_NEW_LOGIN_NAME" => "cred:SQL_APPLICATION_USER",
       "DB_NEW_LOGIN_PASSWORD" => "cred:SQL_APPLICATION_PASSWORD",
+      "SKIP_RESTORE_SYSTEM_DATABASES" => "text:True", #switch($inAWS, "text:False", "text:True"),  # In Azure we need to Skip this bit
       "DNS_SERVICE" => "text:Skip DNS registration",
       "LOGS_VOLUME_SIZE" => "text:1",
       "MASTER_KEY_PASSWORD" => "cred:DBADMIN_PASSWORD",
@@ -290,6 +291,7 @@ resource "server_array_1", type: "server_array" do
   ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
+    "APPLICATION_LISTENER_PORT" => "text:80",
     "REMOTE_STORAGE_ACCOUNT_ID_APP" => "cred:AWS_ACCESS_KEY_ID",
     "REMOTE_STORAGE_ACCOUNT_PROVIDER_APP" => "text:Amazon_S3",
     "REMOTE_STORAGE_ACCOUNT_SECRET_APP" => "cred:AWS_SECRET_ACCESS_KEY",
@@ -387,9 +389,6 @@ define launch_concurrent(@lb_1, @db_1, @server_array_1) return @lb_1, @db_1, @se
     @@launch_task_db1 = @db_1
     @@launch_task_array1 = @server_array_1
 
-    # Do just the DB and LB concurrently.
-    # It may be the case that the DB server needs to be operational before the App server will work properly.
-    # There's a known issue in DotNetNuke where it'll throw the under construction page if the DB server we restarted after the app server connected.
     concurrent do
       sub task_name:"Launch LB-1" do
         task_label("Launching LB-1")

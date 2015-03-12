@@ -173,10 +173,10 @@ end
 # TO-DO: Get account info from the environment and use the mapping accordingly.
 # REAL TO-DO: Once API support is avaiable in CATs, create the security groups, etc in real-time.
 # map($map_current_account, 'current_account_name', 'current_account')
-# _CSE Sandbox is replacd by the Ant build file with the applicable account name based on build target.
+# ___ACCOUNT_NAME__ is replacd by the Ant build file with the applicable account name based on build target.
 mapping "map_current_account" do {
   "current_account_name" => {
-    "current_account" => "CSE Sandbox",
+    "current_account" => "__ACCOUNT_NAME__",
   },
 }
 end
@@ -266,11 +266,10 @@ resource "db_1", type: "server" do
       "BACKUP_FILE_NAME" => "text:DotNetNuke.bak",
       "BACKUP_VOLUME_SIZE" => "text:10",
       "DATA_VOLUME_SIZE" => "text:10",
-      "DB_LINEAGE_NAME" => "text:garbage_name", # "text:selfservicedblineage",
+      "DB_LINEAGE_NAME" => "text:selfservicedblineage",
       "DB_NAME" => "text:DotNetNuke",
       "DB_NEW_LOGIN_NAME" => "cred:SQL_APPLICATION_USER",
       "DB_NEW_LOGIN_PASSWORD" => "cred:SQL_APPLICATION_PASSWORD",
-      "SKIP_RESTORE_SYSTEM_DATABASES" => "text:True", #switch($inAWS, "text:False", "text:True"),  # In Azure we need to Skip this bit
       "DNS_SERVICE" => "text:Skip DNS registration",
       "LOGS_VOLUME_SIZE" => "text:1",
       "MASTER_KEY_PASSWORD" => "cred:DBADMIN_PASSWORD",
@@ -291,7 +290,6 @@ resource "server_array_1", type: "server_array" do
   ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
-    "APPLICATION_LISTENER_PORT" => "text:80",
     "REMOTE_STORAGE_ACCOUNT_ID_APP" => "cred:AWS_ACCESS_KEY_ID",
     "REMOTE_STORAGE_ACCOUNT_PROVIDER_APP" => "text:Amazon_S3",
     "REMOTE_STORAGE_ACCOUNT_SECRET_APP" => "cred:AWS_SECRET_ACCESS_KEY",
@@ -389,9 +387,6 @@ define launch_concurrent(@lb_1, @db_1, @server_array_1) return @lb_1, @db_1, @se
     @@launch_task_db1 = @db_1
     @@launch_task_array1 = @server_array_1
 
-    # Do just the DB and LB concurrently.
-    # It may be the case that the DB server needs to be operational before the App server will work properly.
-    # There's a known issue in DotNetNuke where it'll throw the under construction page if the DB server we restarted after the app server connected.
     concurrent do
       sub task_name:"Launch LB-1" do
         task_label("Launching LB-1")
@@ -539,169 +534,3 @@ define scale_in_array(@server_array_1) do
   end
 end
  
-
-  
-####################
-# Helper functions #
-####################
-# Helper definition, runs a recipe on given server, waits until recipe completes or fails
-# Raises an error in case of failure
-define run_recipe(@target, $recipe_name) do
-  @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: {})
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $recipe_name
-  end
-end
-
-# Helper definition, runs a recipe on given server with the given inputs, waits until recipe completes or fails
-# Raises an error in case of failure
-define run_recipe_inputs(@target, $recipe_name, $recipe_inputs) do
-  @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: $recipe_inputs)
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $recipe_name
-  end
-end
-
-# Helper definition, runs a script on given server, waits until script completes or fails
-# Raises an error in case of failure
-define run_script(@target, $right_script_href) do
-  @task = @target.current_instance().run_executable(right_script_href: $right_script_href, inputs: {})
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $right_script_href
-  end
-end
-
-# Helper definition, runs a script on given server, waits until script completes or fails
-# Raises an error in case of failure
-define run_script_inputs(@target, $right_script_href, $script_inputs) do
-  @task = @target.current_instance().run_executable(right_script_href: $right_script_href, inputs: $script_inputs)
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $right_script_href
-  end
-end
-
-# Helper definition, runs a script on all instances in the array.
-# waits until script completes or fails
-# Raises an error in case of failure
-define multi_run_script(@target, $right_script_href) do
-  @task = @target.multi_run_executable(right_script_href: $right_script_href, inputs: {})
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $right_script_href
-  end
-end
-
-####
-# Author: Ryan Geyer
-###
-define get_array_of_size($size) return $array do
-  $qty = 1
-  $qty_ary = []
-  while $qty <= to_n($size) do
-    $qty_ary << $qty
-    $qty = $qty + 1
-  end
-
-  $array = $qty_ary
-end
-
-####
-# Loggers
-# 
-# Author: Ryan Geyer
-####
-
-define log_this($message) do
-  rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: $message})
-end
- 
-###
-# $notify acceptable values: None|Notification|Security|Error
-###
-define log($message, $notify) do
-  rs.audit_entries.create(notify: $notify, audit_entry: {auditee_href: @@deployment.href, summary: $message})
-end
-
-define log_with_details($summary, $details, $notify) do
-  rs.audit_entries.create(notify: $notify, audit_entry: {auditee_href: @@deployment.href, summary: $summary, detail: $details})
-end
-
-####
-# get clouds
-#
-# Author: Ryan Geyer
-####
-define get_clouds_by_rel($rel) return @clouds do
-  @@clouds = rs.clouds.empty()
-  concurrent foreach @cloud in rs.clouds.get() do
-    $rels = select(@cloud.links, {"rel": $rel})
-    if size($rels) > 0
-      @@clouds = @@clouds + @cloud
-    end
-  end
-  @clouds = @@clouds
-end
-
-define get_execution_id() return $execution_id do
-  #selfservice:href=/api/manager/projects/12345/executions/54354bd284adb8871600200e
-  call get_tags_for_resource(@@deployment) retrieve $tags_on_deployment
-  $href_tag = concurrent map $current_tag in $tags_on_deployment return $tag do
-    if $current_tag =~ "(selfservice:href)"
-      $tag = $current_tag
-    end
-  end
-
-  if type($href_tag) == "array" && size($href_tag) > 0
-    $tag_split_by_value_delimiter = split(first($href_tag), "=")
-    $tag_value = last($tag_split_by_value_delimiter)
-    $value_split_by_slashes = split($tag_value, "/")
-    $execution_id = last($value_split_by_slashes)
-  else
-    $execution_id = "N/A"
-  end
-
-end
-
-# Author: Ryan Geyer
-#
-# Converts a server to an rs.servers.create(server: $return_hash) compatible hash
-#
-# @param @server [ServerResourceCollection] a Server collection containing one
-#   server (what happens if it contains more than one?) to be converted
-#
-# @return [Hash] a hash compatible with rs.servers.create(server: $return_hash)
-define server_definition_to_media_type(@server) return $media_type do
-  $top_level_properties = [
-    "deployment_href",
-    "description",
-    "name",
-    "optimized"
-  ]
-  $definition_hash = to_object(@server)
-  $media_type = {}
-  $instance_hash = {}
-  foreach $key in keys($definition_hash["fields"]) do
-    call log_with_details("Key "+$key, $key+"="+to_json($definition_hash["fields"][$key]), "None")
-    if contains?($top_level_properties, [$key])
-      $media_type[$key] = $definition_hash["fields"][$key]
-    else
-      $instance_hash[$key] = $definition_hash["fields"][$key]
-    end
-  end
-  # TODO: Should be able to assign this directly in the "else" block above once
-  # https://bookiee.rightscale.com/browse/SS-739 is fixed
-  $media_type["instance"] = $instance_hash
-end
-
-### Provision Error Handler
-define handle_provision_error($count) do
-  call log("Handling provision error: " + $_error["message"], "Notification")
-  if $count < 5 
-    $_error_behavior = "retry"
-  end
-end
-
