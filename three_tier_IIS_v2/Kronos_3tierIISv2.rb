@@ -159,7 +159,7 @@ mapping "map_cloud" do {
   },
   "AWS-USA" => {
     "provider" => "AWS",
-    "cloud" => "us-east-1",
+    "cloud" => "us-west-1",
   },
   "Azure-USA" => {   
    "provider" => "Azure",
@@ -187,7 +187,7 @@ end
 mapping "map_account" do {
   "Kronos" => {
     "security_group" => "IIS_3tier_default_SecGrp",
-    "ssh_key" => "FalconDev1",
+    "ssh_key" => "default",
     "s3_bucket" => "kronos-iis-3tier",
     "restore_db_script_href" => "535119003", # DB SQLS Restore database from local disk / Remote Storage
     "create_db_login_script_href" => "535116003", # DB SQLS Create login
