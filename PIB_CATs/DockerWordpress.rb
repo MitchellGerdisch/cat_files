@@ -74,21 +74,25 @@ end
 mapping "map_cloud" do {
   "AWS" => {
     "cloud" => "EC2 us-west-1",
+    "zone" => null, # We don't care which az AWS decides to use.
     "instance_type" => "m3.medium",
     "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
   },
   "Azure" => {   
     "cloud" => "Azure East US",
+    "zone" => null,
     "instance_type" => "medium",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
   },
   "Google" => {
     "cloud" => "Google",
+    "zone" => "us-central1-c", # launches in Google require a zone
     "instance_type" => "n1-standard-2",
     "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
   },
   "vSphere (if available)" => {
     "cloud" => "POC vSphere",
+    "zone" => null,  
     "instance_type" => "small",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
   }
@@ -157,6 +161,7 @@ end
 resource "docker_wordpress_server", type: "server" do
   name 'Docker WordPress'
   cloud map( $map_cloud, $param_location, "cloud" )
+  datacenter map( $map_cloud, $param_location, "zone" )
   instance_type map( $map_cloud, $param_location, "instance_type" )
   ssh_key switch($needsSshKey, 'dwp_sshkey', null)
 #  security_groups switch($needsSecurityGroup, @sec_group, null)  # JIRA SS-1892
