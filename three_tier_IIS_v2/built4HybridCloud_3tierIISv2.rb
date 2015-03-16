@@ -218,6 +218,10 @@ condition "inAWS" do
   equals?(map($map_cloud, $param_location,"provider"), "AWS")
 end
 
+condition "inAzure" do
+  equals?(map($map_cloud, $param_location,"provider"), "Azure")
+end
+
 
 ##############
 # OUTPUTS    #
@@ -270,8 +274,8 @@ resource "db_1", type: "server" do
       "DB_NAME" => "text:DotNetNuke",
       "DB_NEW_LOGIN_NAME" => "cred:SQL_APPLICATION_USER",
       "DB_NEW_LOGIN_PASSWORD" => "cred:SQL_APPLICATION_PASSWORD",
-      "OPT_FORCE_CREATE_VOLUMES" => "text:True",
-      "DNS_SERVICE" => "text:Skip DNS registration",
+      "OPT_FORCE_CREATE_VOLUMES" => "text:True",  # To make it easy to launch in different clouds, set this to true so it starts with a clean slate. 
+      "DNS_SERVICE" => "text:Skip DNS registration",  # We're using IP addresses found within the application. No DNS needed.
       "LOGS_VOLUME_SIZE" => "text:1",
       "MASTER_KEY_PASSWORD" => "cred:DBADMIN_PASSWORD",
       "REMOTE_STORAGE_ACCOUNT_ID" => "cred:AWS_ACCESS_KEY_ID",
@@ -291,7 +295,7 @@ resource "server_array_1", type: "server_array" do
   ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
-    "APPLICATION_LISTENER_PORT" => "text:80",
+    "APPLICATION_LISTENER_PORT" => "text:80", # allows the links on the site to work using the default configuraiton.
     "REMOTE_STORAGE_ACCOUNT_ID_APP" => "cred:AWS_ACCESS_KEY_ID",
     "REMOTE_STORAGE_ACCOUNT_PROVIDER_APP" => "text:Amazon_S3",
     "REMOTE_STORAGE_ACCOUNT_SECRET_APP" => "cred:AWS_SECRET_ACCESS_KEY",
@@ -303,6 +307,7 @@ resource "server_array_1", type: "server_array" do
     "OPT_CONNECTION_STRING_DB_USER_PASSWORD" => "cred:SQL_APPLICATION_PASSWORD",
     "OPT_CONNECTION_STRING_NAME" => "text:SiteSqlServer",
     "ADMIN_PASSWORD" => "cred:WINDOWS_ADMIN_PASSWORD",
+    "FIREWALL_OPEN_PORTS_TCP" => "text:80",
     "SYS_WINDOWS_TZINFO" => "text:Pacific Standard Time",    
   } end
   state "enabled"
@@ -339,21 +344,28 @@ end
 operation "enable" do
   description "Initializes the master DB, imports a DB dump and restarts the IIS application."
   definition "enable_application"
+  
+  output_mappings do {
+    $end2end_test => join(["http://", $lb_1_public_ip_address]),
+    $haproxy_status => join(["http://", $lb_1_public_ip_address, "/haproxy-status"])
+  } end
 end 
 
 operation "start" do
+  condition $inAWS  # Can only do stop/start in AWS
   description "Used to restart servers after stopping them."
   definition "start_servers"
   
   # Update the links provided in the outputs.
   output_mappings do {
-    $end2end_test => join(["http://", @lb_1.public_ip_address]),
-    $haproxy_status => join(["http://", @lb_1.public_ip_address, "/haproxy-status"])
+    $end2end_test => join(["http://", $lb_1_public_ip_address]),
+    $haproxy_status => join(["http://", $lb_1_public_ip_address, "/haproxy-status"])
   } end
   
 end
 
 operation "stop" do
+  condition $inAWS # Can only do stop/start in AWS
   description "Used to stop servers without terminating them."
   definition "stop_servers"
 end
@@ -429,7 +441,7 @@ end
 # Enable operation
 #
 
-define enable_application(@db_1, @server_array_1, $map_current_account, $map_account) do
+define enable_application(@lb_1, @db_1, @server_array_1, $inAzure, $map_current_account, $map_account) return $lb_1_public_ip_address do
   
   $cur_account = map($map_current_account, "current_account_name", "current_account")
   $restore_db_script = map( $map_account, $cur_account, "restore_db_script_href" )
@@ -449,17 +461,26 @@ define enable_application(@db_1, @server_array_1, $map_current_account, $map_acc
   # call run_recipe(@server_array_1, "IIS Restart application (v13.5.0-LTS)")
   # call multi_run_script(@server_array_1, "/api/right_scripts/524965004")
   call multi_run_script(@server_array_1,  join(["/api/right_scripts/", $restart_iis_script]))
-
+    
+  # If deployed in Azure one needs to provide the port mapping that Azure uses.
+  if $inAzure
+     @bindings = rs.clouds.get(href: @lb_1.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @lb_1.current_instance().href])
+     @binding = select(@bindings, {"private_port":80})
+     $lb_1_public_ip_address = join([to_s(@lb_1.current_instance().public_ip_addresses[0]),":",@binding.public_port])
+  else
+     $lb_1_public_ip_address = @lb_1.current_instance().public_ip_addresses[0]
+  end
+  
 end
 
-define start_servers(@lb_1, @db_1, @server_array_1,  $map_current_account, $map_account) do
+# See operations above - this operation is only allowed in certain environments
+define start_servers(@lb_1, @db_1, @server_array_1, $inAWS, $inAzure, $map_current_account, $map_account) return $lb_1_public_ip_address do
   task_label("Starting the servers in the Application.")
   
   $cur_account = map($map_current_account, "current_account_name", "current_account")
   $restart_iis_script = map( $map_account, $cur_account, "restart_iis_script_href" )
   
-  # enable the server array for scaling
-  @lb_1.current_instance().start()
+  @lb_1.current_instance().start() 
   @server_array_1.current_instances().start()
   @db_1.current_instance().start()
   
@@ -492,25 +513,29 @@ define start_servers(@lb_1, @db_1, @server_array_1,  $map_current_account, $map_
   
   # Now that everything is happy, re-enable the server array
   @server_array_1.update(server_array: { state: "enabled"})
-
+    
+  # Return the new LB's IP address
+  $lb_1_public_ip_address = @lb_1.current_instance().public_ip_addresses[0]
+  
 end
 
-define stop_servers(@lb_1, @db_1, @server_array_1) do
+define stop_servers(@lb_1, @db_1, @server_array_1, $inAWS) do
   task_label("Stopping the servers in the Application.")
   
   # disable the server array for scaling
   @server_array_1.update(server_array: { state: "disabled"})
+
   foreach @server in @server_array_1.current_instances() do
     if (@server.state == "operational")
         @server.stop()
     end
   end
   
-  @lb_1.current_instance().stop()
+  @lb_1.current_instance().stop() 
   @db_1.current_instance().stop()
   
-  # Now wait for the instances to be stopped
-  sleep_until(@server_array_1.current_instances().state == "provisioned" && @lb_1.state == "provisioned" && @db_1.state == "provisioned")
+  # Now wait for the instances to be stopped. 
+  sleep_until(@server_array_1.current_instances().state == "provisioned" && @db_1.state == "provisioned" && @lb_1.state == "provisioned")
 end
 
 define scale_out_array(@server_array_1) do
