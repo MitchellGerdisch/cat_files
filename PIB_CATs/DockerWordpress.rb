@@ -73,30 +73,37 @@ end
 ##############
 mapping "map_cloud" do {
   "AWS" => {
+    "cloud_provider" => "AWS", # provides a standard name for the provider to be used elsewhere in the CAT
     "cloud" => "EC2 us-west-1",
     "zone" => null, # We don't care which az AWS decides to use.
     "instance_type" => "m3.medium",
     "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
+    "mci_name" => "RightImage_CentOS_6.5_x64_v14.1",
   },
   "Azure" => {   
+    "cloud_provider" => "Azure", # provides a standard name for the provider to be used elsewhere in the CAT
     "cloud" => "Azure East US",
     "zone" => null,
     "instance_type" => "medium",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
+    "mci_name" => null, # This ServerTemplate does not (currently) support Azure.
   },
   "Google" => {
+    "cloud_provider" => "Google", # provides a standard name for the provider to be used elsewhere in the CAT
     "cloud" => "Google",
     "zone" => "us-central1-c", # launches in Google require a zone
     "instance_type" => "n1-standard-2",
     "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
+    "mci_name" => "RightImage_CentOS_6.5_x64_v14.1",
   },
   "vSphere (if available)" => {
+    "cloud_provider" => "vSphere", # provides a standard name for the provider to be used elsewhere in the CAT
     "cloud" => "POC vSphere",
-    "zone" => null,  
+    "zone" => "Gerdisch-Basement-Zone-1", # DEBUG TESTnull,  
     "instance_type" => "small",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
+    "mci_name" => "RightImage_CentOS_6.5_x64_v14.1_vSphere",   # Need to find the MCI for vSphere environments.
   }
-  
 }
 end
 
@@ -107,11 +114,11 @@ end
 
 # Used to decide whether or not to pass an SSH key or security group when creating the servers.
 condition "needsSshKey" do
-  logic_or(equals?($param_location, "AWS"), equals?($param_location, "POC vSphere"))
+  logic_or(equals?(map($map_cloud, $param_location, "cloud_provider"), "AWS"), equals?(map($map_cloud, $param_location, "cloud_provider"), "vSphere"))
 end
 
 condition "needsSecurityGroup" do
-  logic_or(equals?($param_location, "AWS"), equals?($param_location, "Google"))
+  logic_or(equals?(map($map_cloud, $param_location, "cloud_provider"), "AWS"), equals?(map($map_cloud, $param_location, "cloud_provider"), "Google"))
 end
 
 ############################
@@ -119,15 +126,15 @@ end
 ############################
 
 ### Security Group Definitions ###
+# Note: Even though not all environments need or use security groups, the launch operation/definition will decide whether or not
+# to provision the security group and rules.
 resource "sec_group", type: "security_group" do
-  #condition $needsSecurityGroup
   name join(["DockerWordpressSecGrp-",@@deployment.href])
   description "Docker-Wordpress deployment security group."
   cloud map( $map_cloud, $param_location, "cloud" )
 end
 
 resource "sec_group_rule_http", type: "security_group_rule" do
-  #condition $needsSecurityGroup
   name "Docker-Wordpress deployment HTTP Rule"
   description "Allow HTTP access."
   source_type "cidr_ips"
@@ -142,7 +149,6 @@ resource "sec_group_rule_http", type: "security_group_rule" do
 end
 
 resource "sec_group_rule_ssh", type: "security_group_rule" do
-  #condition $needsSecurityGroup
   name "Docker-Wordpress deployment SSH Rule"
   description "Allow SSH access."
   source_type "cidr_ips"
@@ -160,12 +166,13 @@ end
 ### Server Definition ###
 resource "docker_wordpress_server", type: "server" do
   name 'Docker WordPress'
-  cloud map( $map_cloud, $param_location, "cloud" )
-  datacenter map( $map_cloud, $param_location, "zone" )
-  instance_type map( $map_cloud, $param_location, "instance_type" )
+  cloud map($map_cloud, $param_location, "cloud")
+  datacenter map($map_cloud, $param_location, "zone")
+  instance_type map($map_cloud, $param_location, "instance_type")
+  multi_cloud_image find(map($map_cloud, $param_location, "mci_name"))
   ssh_key switch($needsSshKey, 'dwp_sshkey', null)
 #  security_groups switch($needsSecurityGroup, @sec_group, null)  # JIRA SS-1892
-  security_group_hrefs map( $map_cloud, $param_location, "sg" )  # TEMPORARY UNTIL JIRA SS-1892 is solved
+  security_group_hrefs map($map_cloud, $param_location, "sg")  # TEMPORARY UNTIL JIRA SS-1892 is solved
   server_template find('Docker ServerTemplate for Linux (v14.1.0)')
   inputs do {
     'ephemeral_lvm/filesystem' => 'text:ext4',
@@ -178,6 +185,28 @@ resource "docker_wordpress_server", type: "server" do
     'rs-base/swap/size' => 'text:1',
   } end
 end
+
+### DEBUG - HARDCODED FROM EXPORT ####
+#resource 'docker_wordpress_server', type: 'server' do
+#  name 'Docker ServerTemplate for Linux (v14.1.0)'
+#  cloud 'POC vSphere'
+#  datacenter 'Gerdisch-Basement-Zone-1'
+#  instance_type 'small'
+#  multi_cloud_image find('RightImage_CentOS_6.5_x64_v14.1_vSphere', revision: 7)
+#  ssh_key 'dwp_sshkey'
+#  server_template find('Docker ServerTemplate for Linux (v14.1.0)', revision: 2)
+#  inputs do {
+#    'ephemeral_lvm/filesystem' => 'text:ext4',
+#    'ephemeral_lvm/logical_volume_name' => 'text:ephemeral0',
+#    'ephemeral_lvm/logical_volume_size' => 'text:100%VG',
+#    'ephemeral_lvm/mount_point' => 'text:/mnt/ephemeral',
+#    'ephemeral_lvm/stripe_size' => 'text:512',
+#    'ephemeral_lvm/volume_group_name' => 'text:vg-data',
+#    'rs-base/ntp/servers' => 'array:["text:time.rightscale.com","text:ec2-us-east.time.rightscale.com","text:ec2-us-west.time.rightscale.com"]',
+#    'rs-base/swap/size' => 'text:1',
+#  } end
+#end
+
 
 ####################
 # OPERATIONS       #
@@ -205,9 +234,10 @@ define launch_server(@docker_wordpress_server, @sec_group, @sec_group_rule_http,
     @pub_st=rs.publications.index(filter: ["name==Docker ServerTemplate for Linux (v14.1.0)", "revision==2"])
     @pub_st.import()
     
+    $cloud_name = map( $map_cloud, $param_location, "cloud" )
+    
     # Create the SSH key that will be used (if needed)
     if $needsSshKey
-      $cloud_name = map( $map_cloud, $param_location, "cloud" )
       $ssh_key_name="dwp_sshkey"
       @key=rs.clouds.get(filter: [join(["name==",$cloud_name])]).ssh_keys(filter: [join(["resource_uid==",$ssh_key_name])])
       if empty?(@key)
@@ -216,6 +246,8 @@ define launch_server(@docker_wordpress_server, @sec_group, @sec_group_rule_http,
       else
           rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["SSH key, ", $ssh_key_name, " already exists."])})
       end
+    else
+      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Allegedly no SSH key is needed for cloud, ", $cloud_name])})
     end
     
     # Provision the security group rules if applicable. (The security group itself is created when the server is provisioned.)
