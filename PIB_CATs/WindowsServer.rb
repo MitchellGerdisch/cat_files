@@ -25,24 +25,17 @@
 #RightScale Cloud Application Template (CAT)
 
 # DESCRIPTION
-# Deploys a Docker server and automatically installs WordPress.
+# Deploys a Windows Server of the type chosen by the user.
 # It automatically imports the ServerTemplate it needs.
 # Also, if needed by the target cloud, the security group and/or ssh key is automatically created by the CAT.
 
-# 
-# PREREQUISITES
-#   For vSphere Support: 
-#     A vSphere environment needs to have been set up and registered with the RightScale account being used for the POC.
-#     The environment must be registered as "POC vSphere" to match the cloud mapping used in the code below.
-#     The RCA-V must have at least a zone called "POC-vSphere-Zone-1"
-#     The CentOS image, RightImage_CentOS_6.5_x64_v14.1.3, must be installed.
-#   
 
 # Required prolog
-name 'Docker WordPress'
+name 'Windows Server'
 rs_ca_ver 20131202
-short_description '![logo] (https://s3.amazonaws.com/selfservice-logos/docker.png) ![logo] (https://s3.amazonaws.com/selfservice-logos/wordpress-logo-stacked-rgb.png)'
-long_description '![logo] (https://s3.amazonaws.com/selfservice-logos/docker.png) ![logo] (https://s3.amazonaws.com/selfservice-logos/wordpress-logo-stacked-rgb.png)'
+short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)\n
+Launches a Windows server"
+long_description "Launches a Windows server."
 
 ##################
 # User inputs    #
@@ -54,8 +47,8 @@ parameter "param_location" do
   description "Cloud to deploy in." 
   # CURRENTLY Azure is not supported by the ServerTemplate used in this CAT and so is not presented as an option at this time.
   # vSphere is only available if POC includes the vSphere add-on
-  allowed_values "AWS", "Google", "vSphere (if available)" 
-  default "AWS"
+  allowed_values "AWS", "Azure" 
+  default "Azure"
 end
 
 
@@ -66,7 +59,7 @@ output "host" do
   label "hostname"
   category "Output"
   description "Link to the WordPress server."
-  default_value join(["http://",@docker_wordpress_server.public_ip_address])
+  default_value join(["http://",@windows_server.public_ip_address])
 end
 
 ##############
@@ -79,7 +72,7 @@ mapping "map_cloud" do {
     "zone" => null, # We don't care which az AWS decides to use.
     "instance_type" => "m3.medium",
     "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-    "mci_name" => "RightImage_CentOS_6.5_x64_v14.1",
+    "mci_name" => "RightImage_Windows_2008R2_SP1_x64_v13.5.0-LTS",
   },
   "Azure" => {   
     "cloud_provider" => "Azure", # provides a standard name for the provider to be used elsewhere in the CAT
@@ -87,7 +80,7 @@ mapping "map_cloud" do {
     "zone" => null,
     "instance_type" => "medium",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-    "mci_name" => null, # This ServerTemplate does not (currently) support Azure.
+    "mci_name" => "RightImage_Windows_2008R2_SP1_x64_v13.5.0-LTS",
   },
   "Google" => {
     "cloud_provider" => "Google", # provides a standard name for the provider to be used elsewhere in the CAT
@@ -95,7 +88,7 @@ mapping "map_cloud" do {
     "zone" => "us-central1-c", # launches in Google require a zone
     "instance_type" => "n1-standard-2",
     "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-    "mci_name" => "RightImage_CentOS_6.5_x64_v14.1",
+    "mci_name" => null, # Google not supported
   },
   "vSphere (if available)" => {
     "cloud_provider" => "vSphere", # provides a standard name for the provider to be used elsewhere in the CAT
@@ -103,7 +96,7 @@ mapping "map_cloud" do {
     "zone" => "POC-vSphere-Zone-1", # launches in vSphere require a zone being specified  
     "instance_type" => "large",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-    "mci_name" => "RightImage_CentOS_6.5_x64_v14.1_vSphere",   # Need to find the MCI for vSphere environments.
+    "mci_name" => null,   # vSphere not supported
   }
 }
 end
@@ -134,43 +127,29 @@ end
 # Note: Even though not all environments need or use security groups, the launch operation/definition will decide whether or not
 # to provision the security group and rules.
 resource "sec_group", type: "security_group" do
-  name join(["DockerWordpressSecGrp-",@@deployment.href])
-  description "Docker-Wordpress deployment security group."
+  name join(["WindowsServerSecGrp-",@@deployment.href])
+  description "Windows Server security group."
   cloud map( $map_cloud, $param_location, "cloud" )
 end
 
-resource "sec_group_rule_http", type: "security_group_rule" do
-  name "Docker-Wordpress deployment HTTP Rule"
-  description "Allow HTTP access."
+resource "sec_group_rule_rdp", type: "security_group_rule" do
+  name "Windows Server RDP Rule"
+  description "Allow RDP access."
   source_type "cidr_ips"
   security_group @sec_group
   protocol "tcp"
   direction "ingress"
   cidr_ips "0.0.0.0/0"
   protocol_details do {
-    "start_port" => "80",
-    "end_port" => "80"
-  } end
-end
-
-resource "sec_group_rule_ssh", type: "security_group_rule" do
-  name "Docker-Wordpress deployment SSH Rule"
-  description "Allow SSH access."
-  source_type "cidr_ips"
-  security_group @sec_group
-  protocol "tcp"
-  direction "ingress"
-  cidr_ips "0.0.0.0/0"
-  protocol_details do {
-    "start_port" => "22",
-    "end_port" => "22"
+    "start_port" => "3389",
+    "end_port" => "3389"
   } end
 end
 
 
 ### Server Definition ###
-resource "docker_wordpress_server", type: "server" do
-  name 'Docker WordPress'
+resource "windows_server", type: "server" do
+  name 'Windows Server'
   cloud map($map_cloud, $param_location, "cloud")
   datacenter map($map_cloud, $param_location, "zone")
   instance_type map($map_cloud, $param_location, "instance_type")
@@ -178,39 +157,13 @@ resource "docker_wordpress_server", type: "server" do
   ssh_key switch($needsSshKey, 'dwp_sshkey', null)
 #  security_groups switch($needsSecurityGroup, @sec_group, null)  # JIRA SS-1892
   security_group_hrefs map($map_cloud, $param_location, "sg")  # TEMPORARY UNTIL JIRA SS-1892 is solved
-  server_template find('Docker ServerTemplate for Linux (v14.1.0)')
+  server_template find('Base ServerTemplate for Windows (v13.5.0-LTS)', revision: 3)
   inputs do {
-    'ephemeral_lvm/filesystem' => 'text:ext4',
-    'ephemeral_lvm/logical_volume_name' => 'text:ephemeral0',
-    'ephemeral_lvm/logical_volume_size' => 'text:100%VG',
-    'ephemeral_lvm/mount_point' => 'text:/mnt/ephemeral',
-    'ephemeral_lvm/stripe_size' => 'text:512',
-    'ephemeral_lvm/volume_group_name' => 'text:vg-data',
-    'rs-base/ntp/servers' => 'array:["text:time.rightscale.com","text:ec2-us-east.time.rightscale.com","text:ec2-us-west.time.rightscale.com"]',
-    'rs-base/swap/size' => 'text:1',
+    "ADMIN_PASSWORD" => "text:YOU_SHOULD_USE_A_CRED",
+    "FIREWALL_OPEN_PORTS_TCP" => "text:3389",
+    "SYS_WINDOWS_TZINFO" => "text:Pacific Standard Time",  
   } end
 end
-
-### DEBUG - HARDCODED FROM EXPORT ####
-#resource 'docker_wordpress_server', type: 'server' do
-#  name 'Docker ServerTemplate for Linux (v14.1.0)'
-#  cloud 'POC vSphere'
-#  datacenter 'Gerdisch-Basement-Zone-1'
-#  instance_type 'small'
-#  multi_cloud_image find('RightImage_CentOS_6.5_x64_v14.1_vSphere', revision: 7)
-#  ssh_key 'dwp_sshkey'
-#  server_template find('Docker ServerTemplate for Linux (v14.1.0)', revision: 2)
-#  inputs do {
-#    'ephemeral_lvm/filesystem' => 'text:ext4',
-#    'ephemeral_lvm/logical_volume_name' => 'text:ephemeral0',
-#    'ephemeral_lvm/logical_volume_size' => 'text:100%VG',
-#    'ephemeral_lvm/mount_point' => 'text:/mnt/ephemeral',
-#    'ephemeral_lvm/stripe_size' => 'text:512',
-#    'ephemeral_lvm/volume_group_name' => 'text:vg-data',
-#    'rs-base/ntp/servers' => 'array:["text:time.rightscale.com","text:ec2-us-east.time.rightscale.com","text:ec2-us-west.time.rightscale.com"]',
-#    'rs-base/swap/size' => 'text:1',
-#  } end
-#end
 
 
 ####################
@@ -219,17 +172,12 @@ end
 operation "launch" do 
   description "Launch the server"
   definition "launch_server"
-end
-
-operation "enable" do
-  description "Install and enable WordPress"
-  definition "enable_application"
   
+  # Update the links provided in the outputs.
   output_mappings do {
-    $host => join(["http://", $lb_1_address]),
+    $host => $server_ip_address,
   } end
 end
-
 
 ##########################
 # DEFINITIONS (i.e. RCL) #
@@ -237,17 +185,17 @@ end
 
 # Import and set up what is needed for the server and then launch it.
 # This does NOT install WordPress.
-define launch_server(@docker_wordpress_server, @sec_group, @sec_group_rule_http, @sec_group_rule_ssh, $map_cloud, $param_location, $needsSshKey, $needsSecurityGroup) return @docker_wordpress_server do
+define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_cloud, $param_location, $needsSshKey, $needsSecurityGroup) return @windows_server, $server_ip_address do
   
     # Find and import the server template - just in case it hasn't been imported to the account already
-    @pub_st=rs.publications.index(filter: ["name==Docker ServerTemplate for Linux (v14.1.0)", "revision==2"])
+    @pub_st=rs.publications.index(filter: ["name==Base ServerTemplate for Windows (v13.5.0-LTS)", "revision==3"])
     @pub_st.import()
     
     $cloud_name = map( $map_cloud, $param_location, "cloud" )
     
     # Create the SSH key that will be used (if needed)
     if $needsSshKey
-      $ssh_key_name="dwp_sshkey"
+      $ssh_key_name="cat_sshkey"
       @key=rs.clouds.get(filter: [join(["name==",$cloud_name])]).ssh_keys(filter: [join(["resource_uid==",$ssh_key_name])])
       if empty?(@key)
           rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Did not find SSH key, ", $ssh_key_name, ". So creating it now."])})
@@ -261,51 +209,21 @@ define launch_server(@docker_wordpress_server, @sec_group, @sec_group_rule_http,
     
     # Provision the security group rules if applicable. (The security group itself is created when the server is provisioned.)
     if $needsSecurityGroup
-      provision(@sec_group_rule_http)
-      provision(@sec_group_rule_ssh)
+      provision(@sec_group_rule_rdp)
     end
 
     # Provision the server
-    provision(@docker_wordpress_server)
-
-
+    provision(@windows_server)
+    
+    # If deployed in Azure one needs to provide the port mapping that Azure uses.
+    if $inAzure
+       @bindings = rs.clouds.get(href: @windows_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @windows_server.current_instance().href])
+       @binding = select(@bindings, {"private_port":80})
+       $server_ip_address = join([to_s(@windows_server.current_instance().public_ip_addresses[0]),":",@binding.public_port])
+    else
+       $server_ip_address = @windows_server.current_instance().public_ip_addresses[0]
+    end
 end 
 
-# Install and enable WordPress
-define enable_application(@docker_wordpress_server, $invSphere) return $lb_1_address do
-  
-  # If vSphere, then lb_1 address to use is the private address. Otherwise, use the public address
-  if $invSphere
-    $lb_1_address =  @docker_wordpress_server.current_instance().private_ip_addresses[0]
-    rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["(vSphere) LB_1 IP address: ", $lb_1_address])})
-  else 
-    $lb_1_address =  @docker_wordpress_server.current_instance().public_ip_addresses[0]
-    rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["LB_1 IP address: ", $lb_1_address])})
-  end
-  
-  # Install wordpress in a docker container.
-  # Sometimes docker doesn't respond when pulling the images so extreme measures are needed.
-  $install_attempts=0
-  $install_succeeded=false
-  while ($install_attempts < 2) && ($install_succeeded == false) do
-    
-    @task = @docker_wordpress_server.current_instance().run_executable(recipe_name: "rsc_docker::wordpress", inputs: {})
-    sleep_until(@task.summary =~ "^(completed|failed)")
-    
-    if (@task.summary =~ "completed")
-      $install_succeeded=true
-    else
-      # If it fails, it appears to be a problem with docker not starting up correctly.
-      # The only off-the-shelf fix is to try rebooting the server and then trying again to install wordpress.
-      # Arguably a bit of sledge hammer approach ... but I want to use the off-the-shelf ServerTemplate.
-      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary:"Wordpress install failed. Assuming docker problem. Rebooting to fix."})
-      @docker_wordpress_server.current_instance().reboot()
-      sleep_until(@docker_wordpress_server.state == "operational" || @docker_wordpress_server.state == "stranded")
-    end
-    
-    $install_attempts=$install_attempts+1
-    
-  end
-    
-end
+
 
