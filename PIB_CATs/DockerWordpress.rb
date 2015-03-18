@@ -175,7 +175,7 @@ resource "docker_wordpress_server", type: "server" do
   datacenter map($map_cloud, $param_location, "zone")
   instance_type map($map_cloud, $param_location, "instance_type")
   multi_cloud_image find(map($map_cloud, $param_location, "mci_name"))
-  ssh_key switch($needsSshKey, 'dwp_sshkey', null)
+  ssh_key switch($needsSshKey, 'cat_sshkey', null)
 #  security_groups switch($needsSecurityGroup, @sec_group, null)  # JIRA SS-1892
   security_group_hrefs map($map_cloud, $param_location, "sg")  # TEMPORARY UNTIL JIRA SS-1892 is solved
   server_template find('Docker ServerTemplate for Linux (v14.1.0)')
@@ -190,27 +190,6 @@ resource "docker_wordpress_server", type: "server" do
     'rs-base/swap/size' => 'text:1',
   } end
 end
-
-### DEBUG - HARDCODED FROM EXPORT ####
-#resource 'docker_wordpress_server', type: 'server' do
-#  name 'Docker ServerTemplate for Linux (v14.1.0)'
-#  cloud 'POC vSphere'
-#  datacenter 'Gerdisch-Basement-Zone-1'
-#  instance_type 'small'
-#  multi_cloud_image find('RightImage_CentOS_6.5_x64_v14.1_vSphere', revision: 7)
-#  ssh_key 'dwp_sshkey'
-#  server_template find('Docker ServerTemplate for Linux (v14.1.0)', revision: 2)
-#  inputs do {
-#    'ephemeral_lvm/filesystem' => 'text:ext4',
-#    'ephemeral_lvm/logical_volume_name' => 'text:ephemeral0',
-#    'ephemeral_lvm/logical_volume_size' => 'text:100%VG',
-#    'ephemeral_lvm/mount_point' => 'text:/mnt/ephemeral',
-#    'ephemeral_lvm/stripe_size' => 'text:512',
-#    'ephemeral_lvm/volume_group_name' => 'text:vg-data',
-#    'rs-base/ntp/servers' => 'array:["text:time.rightscale.com","text:ec2-us-east.time.rightscale.com","text:ec2-us-west.time.rightscale.com"]',
-#    'rs-base/swap/size' => 'text:1',
-#  } end
-#end
 
 
 ####################
@@ -247,7 +226,7 @@ define launch_server(@docker_wordpress_server, @sec_group, @sec_group_rule_http,
     
     # Create the SSH key that will be used (if needed)
     if $needsSshKey
-      $ssh_key_name="dwp_sshkey"
+      $ssh_key_name="cat_sshkey"
       @key=rs.clouds.get(filter: [join(["name==",$cloud_name])]).ssh_keys(filter: [join(["resource_uid==",$ssh_key_name])])
       if empty?(@key)
           rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Did not find SSH key, ", $ssh_key_name, ". So creating it now."])})

@@ -51,9 +51,17 @@ parameter "param_location" do
   default "Azure"
 end
 
+parameter "param_username" do 
+  category "User Inputs"
+  label "Windows Username" 
+  description "Username to use when RDPing to the server."
+  type "string" 
+  no_echo "false"
+end
+
 parameter "param_password" do 
   category "User Inputs"
-  label "Windows Administrator Password" 
+  label "Windows Password" 
   description "Administrator password to use when RDPing to the server.
   Windows password complexity requirements = at least 3 of: 
   Uppercase characters, Lowercase characters, Digits 0-9, Non alphanumeric characters." 
@@ -128,6 +136,10 @@ condition "invSphere" do
   equals?(map($map_cloud, $param_location, "cloud_provider"), "vSphere")
 end
 
+condition "inAzure" do
+  equals?(map($map_cloud, $param_location, "cloud_provider"), "Azure")
+end
+
 condition "needsPlacementGroup" do
   equals?(map($map_cloud, $param_location, "cloud_provider"), "Azure")
 end
@@ -173,6 +185,7 @@ resource "windows_server", type: "server" do
   placement_group switch($needsPlacementGroup, 'catwinserverplacegroup', null)
   server_template find('Base ServerTemplate for Windows (v13.5.0-LTS)', revision: 3)
   inputs do {
+    "ADMIN_ACCOUNT_NAME" => join(["text:",$param_username]),
     "ADMIN_PASSWORD" => join(["cred:CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href]), # this credential gets created below using the user-provided password.
     "FIREWALL_OPEN_PORTS_TCP" => "text:3389",
     "SYS_WINDOWS_TZINFO" => "text:Pacific Standard Time",  
@@ -186,10 +199,14 @@ end
 operation "launch" do 
   description "Launch the server"
   definition "launch_server"
-  
+end
+
+operation "enable" do
+  description "Enable the server"
+  definition "enable_server"
   # Update the links provided in the outputs.
   output_mappings do {
-    $rdp_link => join([$server_ip_address]),
+    $rdp_link => $server_ip_address,
   } end
 end
 
@@ -286,18 +303,21 @@ define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_clou
 
     # Provision the server
     provision(@windows_server)
-    
-    # If deployed in Azure one needs to provide the port mapping that Azure uses.
-    if $inAzure
-       @bindings = rs.clouds.get(href: @windows_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @windows_server.current_instance().href])
-       @binding = select(@bindings, {"private_port":3389})
-       $server_ip_address = join([to_s(@windows_server.current_instance().public_ip_addresses[0]),":",@binding.public_port])
-    else
-       $server_ip_address = @windows_server.current_instance().public_ip_addresses[0]
-    end
+   
 end 
 
-# Terminte the cred and server
+define enable_server(@windows_server, $inAzure) return $server_ip_address do
+  # If deployed in Azure one needs to provide the port mapping that Azure uses.
+  if $inAzure
+     @bindings = rs.clouds.get(href: @windows_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @windows_server.current_instance().href])
+     @binding = select(@bindings, {"private_port":3389})
+     $server_ip_address = join([to_s(@windows_server.current_instance().public_ip_addresses[0]),":",@binding.public_port])
+  else
+     $server_ip_address = @windows_server.current_instance().public_ip_addresses[0]
+  end
+end
+
+# Terminate the cred and server
 define terminate_server(@windows_server) do
   
   # Delete the cred we created for the user-provided password
@@ -306,7 +326,7 @@ define terminate_server(@windows_server) do
   @cred.destroy()
     
   # Terminate the server
-  @windows_server.delete()
+  delete(@windows_server)
   
 end
 
