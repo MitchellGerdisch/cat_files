@@ -41,7 +41,7 @@ long_description "Launches a Windows server."
 # User inputs    #
 ##################
 parameter "param_location" do 
-  category "Deployment Options"
+  category "User Inputs"
   label "Cloud" 
   type "string" 
   description "Cloud to deploy in." 
@@ -49,6 +49,16 @@ parameter "param_location" do
   # vSphere is only available if POC includes the vSphere add-on
   allowed_values "AWS", "Azure" 
   default "Azure"
+end
+
+parameter "param_password" do 
+  category "User Inputs"
+  label "Windows Administrator Password" 
+  description "Administrator password to use when RDPing to the server.
+  Windows password complexity requirements = at least 3 of: 
+  Uppercase characters, Lowercase characters, Digits 0-9, Non alphanumeric characters." 
+  type "string" 
+  no_echo "true"
 end
 
 
@@ -163,7 +173,7 @@ resource "windows_server", type: "server" do
   placement_group switch($needsPlacementGroup, 'catwinserverplacegroup', null)
   server_template find('Base ServerTemplate for Windows (v13.5.0-LTS)', revision: 3)
   inputs do {
-    "ADMIN_PASSWORD" => "text:You_Should_Use_@_Cr3d",
+    "ADMIN_PASSWORD" => join(["cred:CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href]), # this credential gets created below using the user-provided password.
     "FIREWALL_OPEN_PORTS_TCP" => "text:3389",
     "SYS_WINDOWS_TZINFO" => "text:Pacific Standard Time",  
   } end
@@ -179,8 +189,13 @@ operation "launch" do
   
   # Update the links provided in the outputs.
   output_mappings do {
-    $rdp_link => $server_ip_address,
+    $rdp_link => join([$server_ip_address]),
   } end
+end
+
+operation "terminate" do
+  description "Terminate the server and clean up"
+  definition "terminate_server"
 end
 
 ##########################
@@ -189,13 +204,18 @@ end
 
 # Import and set up what is needed for the server and then launch it.
 # This does NOT install WordPress.
-define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_cloud, $param_location, $needsSshKey, $needsSecurityGroup, $needsPlacementGroup) return @windows_server, $server_ip_address do
+define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_cloud, $param_location, $param_password, $needsSshKey, $needsSecurityGroup, $needsPlacementGroup) return @windows_server, $server_ip_address do
   
+    # Need the cloud name later on
+    $cloud_name = map( $map_cloud, $param_location, "cloud" )
+
     # Find and import the server template - just in case it hasn't been imported to the account already
     @pub_st=rs.publications.index(filter: ["name==Base ServerTemplate for Windows (v13.5.0-LTS)", "revision==3"])
     @pub_st.import()
     
-    $cloud_name = map( $map_cloud, $param_location, "cloud" )
+    # Create the Admin Password credential used for the server based on the user-entered password.
+    $credname = join(["CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href])
+    @task=rs.credentials.create({"name":$credname, "value": $param_password})
     
     # Create the SSH key that will be used (if needed)
     if $needsSshKey
@@ -240,11 +260,8 @@ define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_clou
           sub on_error: skip do # ignore error - we'll deal with possibilities later
             @task=rs.placement_groups.delete({"name" : $placement_group_name, "cloud_href" : $cloud_href})
           end
-        end
-        
+        end  
         $attempts=$attempts+1
-        
-            
       end
           
       if ($succeeded == false) 
@@ -252,14 +269,13 @@ define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_clou
         sleep(480)
         @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
         if empty?(@placement_groups)
+          # just forget it - we tried ....
           raise "Failed to create placement group"
         end
-        
         rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Finally. Placement group, ", $placement_group_name, " has been created."])})
-
       end
 
-    else
+    else # no placement group needed
       rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No placement group is needed for cloud, ", $cloud_name])})
     end
     
@@ -274,12 +290,25 @@ define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_clou
     # If deployed in Azure one needs to provide the port mapping that Azure uses.
     if $inAzure
        @bindings = rs.clouds.get(href: @windows_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @windows_server.current_instance().href])
-       @binding = select(@bindings, {"private_port":80})
+       @binding = select(@bindings, {"private_port":3389})
        $server_ip_address = join([to_s(@windows_server.current_instance().public_ip_addresses[0]),":",@binding.public_port])
     else
        $server_ip_address = @windows_server.current_instance().public_ip_addresses[0]
     end
 end 
+
+# Terminte the cred and server
+define terminate_server(@windows_server) do
+  
+  # Delete the cred we created for the user-provided password
+  $credname = join(["CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href])
+  @cred=rs.credentials.get(filter: [join(["name==",$credname])])
+  @cred.destroy()
+    
+  # Terminate the server
+  @windows_server.delete()
+  
+end
 
 
 
