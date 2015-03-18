@@ -119,6 +119,10 @@ condition "invSphere" do
   equals?(map($map_cloud, $param_location, "cloud_provider"), "vSphere")
 end
 
+condition "needsPlacementGroup" do
+  equals?(map($map_cloud, $param_location, "cloud_provider"), "Azure")
+end
+
 ############################
 # RESOURCE DEFINITIONS     #
 ############################
@@ -154,12 +158,13 @@ resource "windows_server", type: "server" do
   datacenter map($map_cloud, $param_location, "zone")
   instance_type map($map_cloud, $param_location, "instance_type")
   multi_cloud_image find(map($map_cloud, $param_location, "mci_name"))
-  ssh_key switch($needsSshKey, 'dwp_sshkey', null)
+  ssh_key switch($needsSshKey, 'cat_sshkey', null)
 #  security_groups switch($needsSecurityGroup, @sec_group, null)  # JIRA SS-1892
   security_group_hrefs map($map_cloud, $param_location, "sg")  # TEMPORARY UNTIL JIRA SS-1892 is solved
+  placement_group switch($needsPlacementGroup, 'cat_placement_group', null)
   server_template find('Base ServerTemplate for Windows (v13.5.0-LTS)', revision: 3)
   inputs do {
-    "ADMIN_PASSWORD" => "text:YOU_SHOULD_USE_A_CRED",
+    "ADMIN_PASSWORD" => "text:You_Should_Use_@_Cr3d",
     "FIREWALL_OPEN_PORTS_TCP" => "text:3389",
     "SYS_WINDOWS_TZINFO" => "text:Pacific Standard Time",  
   } end
@@ -185,7 +190,7 @@ end
 
 # Import and set up what is needed for the server and then launch it.
 # This does NOT install WordPress.
-define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_cloud, $param_location, $needsSshKey, $needsSecurityGroup) return @windows_server, $server_ip_address do
+define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_cloud, $param_location, $needsSshKey, $needsSecurityGroup, $needsPlacementGroup) return @windows_server, $server_ip_address do
   
     # Find and import the server template - just in case it hasn't been imported to the account already
     @pub_st=rs.publications.index(filter: ["name==Base ServerTemplate for Windows (v13.5.0-LTS)", "revision==3"])
@@ -205,6 +210,33 @@ define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_clou
       end
     else
       rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Allegedly no SSH key is needed for cloud, ", $cloud_name])})
+    end
+    
+    # Create the placement group that will be used (if needed)
+    if $needsPlacementGroup
+      $placement_group_name="cat_placement_group"
+      @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
+      if empty?(@placement_groups)
+          rs.audit_entries.create(audit_entry: {auditee_href: @windows_server.href, summary: join(["Did not find placement group, ", $placement_group_name, ". So creating it now."])})
+          rs.placement_groups.create({"name" : $placement_group_name, "cloud_href" : $cloud_name})
+      else
+          rs.audit_entries.create(audit_entry: {auditee_href: @windows_server.href, summary: join(["Placment group, ", $placement_group_name, " already exists."])})
+      end
+    else
+      rs.audit_entries.create(audit_entry: {auditee_href: @windows_server.href, summary: join(["Allegedly no placement group is needed for cloud, ", $cloud_name])})
+    end
+
+    if $needsPlacementGroup
+      $placement_group_name="cat_placement_group"
+      @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
+      if empty?(@placement_groups)
+          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Did not find placement group, ", $placement_group_name, ". So creating it now."])})
+          rs.placement_groups().create({"name" : $placement_group_name, "cloud_href" : $cloud_name})
+      else
+          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Placment group, ", $placement_group_name, " already exists."])})
+      end
+    else
+      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Allegedly no placement group is needed for cloud, ", $cloud_name])})
     end
     
     # Provision the security group rules if applicable. (The security group itself is created when the server is provisioned.)
