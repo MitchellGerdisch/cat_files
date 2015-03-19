@@ -25,17 +25,17 @@
 #RightScale Cloud Application Template (CAT)
 
 # DESCRIPTION
-# Deploys a Windows Server of the type chosen by the user.
+# Deploys a basic Linux server of type CentOS or Ubuntu as selected by user.
 # It automatically imports the ServerTemplate it needs.
 # Also, if needed by the target cloud, the security group and/or ssh key is automatically created by the CAT.
 
 
 # Required prolog
-name 'Windows Server'
+name 'Linux Server'
 rs_ca_ver 20131202
-short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)\n
-Launches a Windows server"
-long_description "Launches a Windows server."
+short_description "![Linux](http://www.cd-webdesign.co.uk/images/logos/linux-logo.png)\n
+Launches a Linux server"
+long_description "Launches a Linux server."
 
 ##################
 # User inputs    #
@@ -45,51 +45,34 @@ parameter "param_location" do
   label "Cloud" 
   type "string" 
   description "Cloud to deploy in." 
-  allowed_values "AWS", "Azure" 
-  default "Azure"
+  allowed_values "AWS", "Azure", "Google"
+  default "AWS"
 end
 
 parameter "param_servertype" do
   category "User Inputs"
-  label "Windows Server Type"
+  label "Linux Server Type"
   type "list"
-  description "Type of Windows server to launch"
-  allowed_values "Windows 2008R2 Base Server",
-  "Windows 2008R2 IIS Server",
-  "Windows 2008R2 Server with SQL 2008",
-  "Windows 2008R2 Server with SQL 2012",
-  "Windows 2012 Base Server",
-  "Windows 2012 IIS Server",
-  "Windows 2012 Server with SQL 2012"
-  default "Windows 2008R2 Base Server"
+  description "Type of Linux server to launch"
+  allowed_values "CentOS 6.6", 
+    "Ubuntu 12.04"
+  default "CentOS 6.6"
 end
-
-parameter "param_username" do 
-  category "User Inputs"
-  label "Windows Username" 
-  description "Username to use when RDPing to the server."
-  type "string" 
-  no_echo "false"
-end
-
-parameter "param_password" do 
-  category "User Inputs"
-  label "Windows Password" 
-  description "Administrator password to use when RDPing to the server.
-  Windows password complexity requirements = at least 3 of: 
-  Uppercase characters, Lowercase characters, Digits 0-9, Non alphanumeric characters." 
-  type "string" 
-  no_echo "true"
-end
-
 
 ################################
 # Outputs returned to the user #
 ################################
-output "rdp_link" do
-  label "RDP Link"
+output "ssh_link" do
+  label "SSH Link"
   category "Output"
-  description "RDP Link to the Windows server."
+  description "Use this string along with your SSH key to access your server."
+end
+
+output "ssh_key_info" do
+  label "Link to your SSH Key"
+  category "Output"
+  description "Use this link to download your SSH private key and use it to login to the server using provided \"SSH Link\"."
+  default_value "https://my.rightscale.com/global/users/ssh#ssh"
 end
 
 ##############
@@ -128,26 +111,11 @@ mapping "map_cloud" do {
 end
 
 mapping "map_mci" do {
-  "Windows 2008R2 Base Server" => {
-    "mci" => "RightImage_Windows_2008R2_SP1_x64_v13.5.0-LTS"
+  "CentOS 6.6" => {
+    "mci" => "RightImage_CentOS_6.6_x64_v13.5_LTS"
   },
-  "Windows 2008R2 IIS Server" => {
-    "mci" => "RightImage_Windows_2008R2_SP1_x64_iis7.5_v13.5.0-LTS"
-  },
-  "Windows 2008R2 Server with SQL 2012" => {
-    "mci" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2012_v13.5.0-LTS"
-  },
-  "Windows 2008R2 Server with SQL 2008" => {
-    "mci" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2k8r2_v13.5.0-LTS"
-  },
-  "Windows 2012 IIS Server" => {
-    "mci" => "RightImage_Windows_2012_x64_iis8_v13.5.0-LTS"
-  },
-  "Windows 2012 Server with SQL 2012" => {
-    "mci" => "RightImage_Windows_2012_x64_sqlsvr2012_v13.5.0-LTS"
-  },
-  "Windows 2012 Base Server" => {
-    "mci" => "RightImage_Windows_2012_x64_v13.5.0-LTS"
+  "Ubuntu 12.04" => {
+    "mci" => "RightImage_Ubuntu_12.04_x64_v13.5_LTS"
   },
 } end
 
@@ -184,29 +152,29 @@ end
 # Note: Even though not all environments need or use security groups, the launch operation/definition will decide whether or not
 # to provision the security group and rules.
 resource "sec_group", type: "security_group" do
-  name join(["WindowsServerSecGrp-",@@deployment.href])
-  description "Windows Server security group."
+  name join(["LinuxServerSecGrp-",@@deployment.href])
+  description "Linux Server security group."
   cloud map( $map_cloud, $param_location, "cloud" )
 end
 
-resource "sec_group_rule_rdp", type: "security_group_rule" do
-  name "Windows Server RDP Rule"
-  description "Allow RDP access."
+resource "sec_group_rule_ssh", type: "security_group_rule" do
+  name "Linux server SSH Rule"
+  description "Allow SSH access."
   source_type "cidr_ips"
   security_group @sec_group
   protocol "tcp"
   direction "ingress"
   cidr_ips "0.0.0.0/0"
   protocol_details do {
-    "start_port" => "3389",
-    "end_port" => "3389"
+    "start_port" => "22",
+    "end_port" => "22"
   } end
 end
 
 
 ### Server Definition ###
-resource "windows_server", type: "server" do
-  name 'Windows Server'
+resource "linux_server", type: "server" do
+  name 'Linux Server'
   cloud map($map_cloud, $param_location, "cloud")
   datacenter map($map_cloud, $param_location, "zone")
   instance_type map($map_cloud, $param_location, "instance_type")
@@ -214,14 +182,8 @@ resource "windows_server", type: "server" do
   ssh_key switch($needsSshKey, 'cat_sshkey', null)
 #  security_groups switch($needsSecurityGroup, @sec_group, null)  # JIRA SS-1892
   security_group_hrefs map($map_cloud, $param_location, "sg")  # TEMPORARY UNTIL JIRA SS-1892 is solved
-  placement_group switch($needsPlacementGroup, 'catwinserverplacegroup', null)
-  server_template find('Base ServerTemplate for Windows (v13.5.0-LTS)', revision: 3)
-  inputs do {
-    "ADMIN_ACCOUNT_NAME" => join(["text:",$param_username]),
-    "ADMIN_PASSWORD" => join(["cred:CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href]), # this credential gets created below using the user-provided password.
-    "FIREWALL_OPEN_PORTS_TCP" => "text:3389",
-    "SYS_WINDOWS_TZINFO" => "text:Pacific Standard Time",  
-  } end
+  placement_group switch($needsPlacementGroup, 'catplacementgroup', null)
+  server_template find('Base ServerTemplate for Linux (RSB) (v13.5.11-LTS)', revision: 23)
 end
 
 
@@ -238,13 +200,8 @@ operation "enable" do
   definition "enable_server"
   # Update the links provided in the outputs.
   output_mappings do {
-    $rdp_link => $server_ip_address,
+    $ssh_link => $server_ip_address,
   } end
-end
-
-operation "terminate" do
-  description "Terminate the server and clean up"
-  definition "terminate_server"
 end
 
 ##########################
@@ -253,18 +210,14 @@ end
 
 # Import and set up what is needed for the server and then launch it.
 # This does NOT install WordPress.
-define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_cloud, $param_location, $param_password, $needsSshKey, $needsSecurityGroup, $needsPlacementGroup) return @windows_server do
+define launch_server(@linux_server, @sec_group, @sec_group_rule_ssh, $map_cloud, $param_location, $needsSshKey, $needsSecurityGroup, $needsPlacementGroup) return @linux_server do
   
     # Need the cloud name later on
     $cloud_name = map( $map_cloud, $param_location, "cloud" )
 
     # Find and import the server template - just in case it hasn't been imported to the account already
-    @pub_st=rs.publications.index(filter: ["name==Base ServerTemplate for Windows (v13.5.0-LTS)", "revision==3"])
+    @pub_st=rs.publications.index(filter: ["name==Base ServerTemplate for Linux (RSB) (v13.5.11-LTS)", "revision==23"])
     @pub_st.import()
-    
-    # Create the Admin Password credential used for the server based on the user-entered password.
-    $credname = join(["CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href])
-    @task=rs.credentials.create({"name":$credname, "value": $param_password})
     
     # Create the SSH key that will be used (if needed)
     if $needsSshKey
@@ -283,7 +236,7 @@ define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_clou
     # Create the placement group that will be used (if needed)
     if $needsPlacementGroup
       # The name of the placement group
-      $placement_group_name="catwinserverplacegroup"
+      $placement_group_name="catplacementgroup"
       
       $attempts=0
       $succeeded=false
@@ -330,37 +283,25 @@ define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_clou
     
     # Provision the security group rules if applicable. (The security group itself is created when the server is provisioned.)
     if $needsSecurityGroup
-      provision(@sec_group_rule_rdp)
+      provision(@sec_group_rule_ssh)
     end
 
     # Provision the server
-    provision(@windows_server)
+    provision(@linux_server)
    
 end 
 
-define enable_server(@windows_server, $inAzure) return $server_ip_address do
+define enable_server(@linux_server, $inAzure) return $server_ip_address do
   # If deployed in Azure one needs to provide the port mapping that Azure uses.
   if $inAzure
-     @bindings = rs.clouds.get(href: @windows_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @windows_server.current_instance().href])
-     @binding = select(@bindings, {"private_port":3389})
-     $server_ip_address = join([to_s(@windows_server.current_instance().public_ip_addresses[0]),":",@binding.public_port])
+     @bindings = rs.clouds.get(href: @linux_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @linux_server.current_instance().href])
+     @binding = select(@bindings, {"private_port":22})
+     $server_ip_address = join(["-p ", @binding.public_port, " rightscale@", to_s(@linux_server.current_instance().public_ip_addresses[0])])
   else
-     $server_ip_address = @windows_server.current_instance().public_ip_addresses[0]
+     $server_ip_address = join(["rightscale@", @linux_server.current_instance().public_ip_addresses[0]])
   end
 end
 
-# Terminate the cred and server
-define terminate_server(@windows_server) do
-  
-  # Delete the cred we created for the user-provided password
-  $credname = join(["CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href])
-  @cred=rs.credentials.get(filter: [join(["name==",$credname])])
-  @cred.destroy()
-    
-  # Terminate the server
-  delete(@windows_server)
-  
-end
 
 
 
