@@ -196,7 +196,6 @@ resource "linux_server", type: "server" do
   ssh_key switch($needsSshKey, 'cat_sshkey', null)
 #  security_groups switch($needsSecurityGroup, @sec_group, null)  # JIRA SS-1892
   security_group_hrefs map($map_cloud, $param_location, "sg")  # TEMPORARY UNTIL JIRA SS-1892 is solved
-  placement_group switch($needsPlacementGroup, 'catplacementgroup', null)
   server_template find('RL10.0.rc2 Linux Base', revision: 3)
 end
 
@@ -245,54 +244,6 @@ define launch_server(@linux_server, @sec_group, @sec_group_rule_ssh, $map_cloud,
       end
     else
       rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No SSH key is needed for cloud, ", $cloud_name])})
-    end
-    
-    # Create the placement group that will be used (if needed)
-    if $needsPlacementGroup
-      # The name of the placement group
-      $placement_group_name="catplacementgroup"
-      
-      $attempts=0
-      $succeeded=false
-      $cloud_href = rs.clouds.get(filter: [join(["name==",$cloud_name])]).href
-        
-      while ($attempts < 3) && ($succeeded == false) do
-
-        @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
-          
-        if empty?(@placement_groups)
-          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Did not find placement group, ", $placement_group_name, ". So creating it now."])})
-          sub on_error: skip do # ignore an error - we'll deal with possibilities later
-            @task=rs.placement_groups.create({"name" : $placement_group_name, "cloud_href" : $cloud_href})
-          end
-          
-        elsif (@placement_groups.state == "available")
-          # all good 
-          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Found placement group, ", $placement_group_name])})
-          $succeeded=true
-
-        else # found a placement group but it's in some funky state, so delete and try again.
-          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["The placement group ", $placement_group_name, "was not created but is in state, ",@placement_groups.state," So deleting and recreating"])})
-          sub on_error: skip do # ignore error - we'll deal with possibilities later
-            @task=rs.placement_groups.delete({"name" : $placement_group_name, "cloud_href" : $cloud_href})
-          end
-        end  
-        $attempts=$attempts+1
-      end
-          
-      if ($succeeded == false) 
-        # If we get here, I'm going to sleep for 8 more minutes and check one last time since there is sometimes a lag between making the request to create and it existing.
-        sleep(480)
-        @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
-        if empty?(@placement_groups)
-          # just forget it - we tried ....
-          raise "Failed to create placement group"
-        end
-        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Finally. Placement group, ", $placement_group_name, " has been created."])})
-      end
-
-    else # no placement group needed
-      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No placement group is needed for cloud, ", $cloud_name])})
     end
     
     # Provision the security group rules if applicable. (The security group itself is created when the server is provisioned.)

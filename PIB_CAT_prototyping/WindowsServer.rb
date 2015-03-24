@@ -67,7 +67,7 @@ end
 parameter "param_username" do 
   category "User Inputs"
   label "Windows Username" 
-  description "Username to use when RDPing to the server."
+  description "Username (will be created)."
   type "string" 
   no_echo "false"
 end
@@ -75,8 +75,8 @@ end
 parameter "param_password" do 
   category "User Inputs"
   label "Windows Password" 
-  description "Administrator password to use when RDPing to the server.
-  Windows password complexity requirements = at least 3 of: 
+  description "Password (will be created).
+  Windows password complexity requirements = at least 8 characters and contain at least 3 of: 
   Uppercase characters, Lowercase characters, Digits 0-9, Non alphanumeric characters." 
   type "string" 
   no_echo "true"
@@ -214,7 +214,7 @@ resource "windows_server", type: "server" do
   ssh_key switch($needsSshKey, 'cat_sshkey', null)
 #  security_groups switch($needsSecurityGroup, @sec_group, null)  # JIRA SS-1892
   security_group_hrefs map($map_cloud, $param_location, "sg")  # TEMPORARY UNTIL JIRA SS-1892 is solved
-  placement_group switch($needsPlacementGroup, 'catwinserverplacegroup', null)
+  # NOTE: No placement group field is provided here. Instead placement groups are handled in the launch definition below.
   server_template find('Base ServerTemplate for Windows (v13.5.0-LTS)', revision: 3)
   inputs do {
     "ADMIN_ACCOUNT_NAME" => join(["text:",$param_username]),
@@ -253,7 +253,7 @@ end
 
 # Import and set up what is needed for the server and then launch it.
 # This does NOT install WordPress.
-define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_cloud, $param_location, $param_password, $needsSshKey, $needsSecurityGroup, $needsPlacementGroup) return @windows_server do
+define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_cloud, $param_location, $param_password, $needsSshKey, $needsSecurityGroup, $needsPlacementGroup) return @windows_server, @sec_group do
   
     # Need the cloud name later on
     $cloud_name = map( $map_cloud, $param_location, "cloud" )
@@ -280,17 +280,26 @@ define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_clou
       rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No SSH key is needed for cloud, ", $cloud_name])})
     end
     
-    # Create the placement group that will be used (if needed)
-    if $needsPlacementGroup
-      # The name of the placement group
-      $placement_group_name="catwinserverplacegroup"
-      
-      $attempts=0
-      $succeeded=false
-      $cloud_href = rs.clouds.get(filter: [join(["name==",$cloud_name])]).href
+      # Create the placement group that will be used (if needed)
+      if $needsPlacementGroup
         
+        # Dump the hash before doing anything
+      #$my_server_hash = to_object(@windows_server)
+      #rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "server hash before adding pg", detail: to_s($my_server_hash)})
+      
+      # Create a unique placement group name, create it, and then place the href into the server declaration.
+      $pg_name = join(split(uuid(), "-"))[0..23] # unique placement group  
+      
+      # create the placement group ....
+      $cloud_href = rs.clouds.get(filter: [join(["name==",$cloud_name])]).href
+      
+      $placement_group_name=$pg_name
+            
+      $attempts = 0
+      $succeeded = false
+      $pg_href = null
       while ($attempts < 3) && ($succeeded == false) do
-
+      
         @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
           
         if empty?(@placement_groups)
@@ -303,7 +312,8 @@ define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_clou
           # all good 
           rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Found placement group, ", $placement_group_name])})
           $succeeded=true
-
+          $pg_href = @placement_groups.href # Will use this later
+      
         else # found a placement group but it's in some funky state, so delete and try again.
           rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["The placement group ", $placement_group_name, "was not created but is in state, ",@placement_groups.state," So deleting and recreating"])})
           sub on_error: skip do # ignore error - we'll deal with possibilities later
@@ -323,6 +333,16 @@ define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_clou
         end
         rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Finally. Placement group, ", $placement_group_name, " has been created."])})
       end
+      
+      # If I get here, then I have a placement group that I need to insert into the server resource declaration.
+      $my_server_hash = to_object(@windows_server)
+      $my_server_hash["fields"]["placement_group_href"] = $pg_href
+        
+      # Dump the hash after the update
+      #rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "server hash after adding pg", detail: to_s($my_server_hash)})
+      
+      # Copy things back for the later provision ...
+      @windows_server = $my_server_hash
 
     else # no placement group needed
       rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No placement group is needed for cloud, ", $cloud_name])})
@@ -350,17 +370,61 @@ define enable_server(@windows_server, $inAzure) return $server_ip_address do
 end
 
 # Terminate the cred and server
-define terminate_server(@windows_server) do
+define terminate_server(@windows_server, @sec_group, $map_cloud, $param_location, $needsSecurityGroup, $needsPlacementGroup) do
   
   # Delete the cred we created for the user-provided password
   $credname = join(["CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href])
   @cred=rs.credentials.get(filter: [join(["name==",$credname])])
   @cred.destroy()
+  
+  # find the placement group before deleting the server and then delete the PG once the server is gone
+  if $needsPlacementGroup 
+    sub on_error: skip do  # if might throw an error if we are stopped and there's nothing existing at this point.
+      @pg_res = @windows_server.current_instance().placement_group()
+      $$pg_name = @pg_res.name
+      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Placement group associated with the server: ", $$pg_name])})
+    end
+  end
     
   # Terminate the server
   delete(@windows_server)
   
+  if $needsSecurityGroup
+    rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Deleting security group, ", @sec_group])})
+    @sec_group.destroy()
+  end
+  
+  if $needsPlacementGroup
+     rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Placement group name to delete: ", $$pg_name])})
+  
+     # Sleep a bit to make sure server is cleaned up and I can delete the PG
+     sleep(120)
+
+     $cloud_name = map( $map_cloud, $param_location, "cloud" )
+     $cloud_href = rs.clouds.get(filter: [join(["name==",$cloud_name])]).href
+       
+     @pgs=rs.placement_groups.get(filter:[join(["cloud_href==",$cloud_href]), join(["name==",$$pg_name])])
+       
+     foreach @pg in @pgs do
+       if @pg.name == $$pg_name
+         rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Found placement group and deleting: ", @pg.name])})
+         $attempts = 0
+         sub on_error: handle_retries($attempts) do
+           $attempts = $attempts + 1
+           @pg.destroy()
+         end
+       end
+     end
+  end
 end
 
+define handle_retries($attempts) do
+  if $attempts < 3
+    $_error_behavior = "retry"
+    sleep(60)
+  else
+    $_error_behavior = "skip"
+  end
+end
 
 
