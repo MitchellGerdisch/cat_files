@@ -45,7 +45,7 @@ parameter "param_location" do
   label "Cloud" 
   type "string" 
   description "Cloud to deploy in." 
-  allowed_values "AWS", "Azure" 
+  allowed_values "AWS", "Azure", "VMware"
   default "Azure"
 end
 
@@ -54,13 +54,14 @@ parameter "param_servertype" do
   label "Windows Server Type"
   type "list"
   description "Type of Windows server to launch"
-  allowed_values "Windows 2008R2 Base Server",
-  "Windows 2008R2 IIS Server",
-  "Windows 2008R2 Server with SQL 2008",
-  "Windows 2008R2 Server with SQL 2012",
-  "Windows 2012 Base Server",
-  "Windows 2012 IIS Server",
-  "Windows 2012 Server with SQL 2012"
+  allowed_values "Windows 2008R2 Base Server"
+# CURRENTLY ONLY 2008R2 is supported in the ANZ vSphere env
+#  "Windows 2008R2 IIS Server",
+#  "Windows 2008R2 Server with SQL 2008",
+#  "Windows 2008R2 Server with SQL 2012",
+#  "Windows 2012 Base Server",
+#  "Windows 2012 IIS Server",
+#  "Windows 2012 Server with SQL 2012"
   default "Windows 2008R2 Base Server"
 end
 
@@ -117,10 +118,10 @@ mapping "map_cloud" do {
     "instance_type" => "n1-standard-2",
     "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
   },
-  "vSphere (if available)" => {
+  "VMware" => {
     "cloud_provider" => "vSphere", # provides a standard name for the provider to be used elsewhere in the CAT
-    "cloud" => "POC vSphere",
-    "zone" => "POC-vSphere-Zone-1", # launches in vSphere require a zone being specified  
+    "cloud" => "ANZ Bank vSphere",
+    "zone" => "anz_bank_poc", # launches in vSphere require a zone being specified  
     "instance_type" => "large",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
   }
@@ -129,7 +130,7 @@ end
 
 mapping "map_mci" do {
   "Windows 2008R2 Base Server" => {
-    "mci" => "RightImage_Windows_2008R2_SP1_x64_v13.5.0-LTS"
+    "mci" => "RightImage_Windows_2008R2_SP1_x64_v14.1_VMware ANZ vSphere Support"
   },
   "Windows 2008R2 IIS Server" => {
     "mci" => "RightImage_Windows_2008R2_SP1_x64_iis7.5_v13.5.0-LTS"
@@ -215,7 +216,7 @@ resource "windows_server", type: "server" do
 #  security_groups switch($needsSecurityGroup, @sec_group, null)  # JIRA SS-1892
   security_group_hrefs map($map_cloud, $param_location, "sg")  # TEMPORARY UNTIL JIRA SS-1892 is solved
   # NOTE: No placement group field is provided here. Instead placement groups are handled in the launch definition below.
-  server_template find('Base ServerTemplate for Windows (v13.5.0-LTS)', revision: 3)
+  server_template find('Base ServerTemplate for Windows (v14.1) - ANZ vSphere Support')
   inputs do {
     "ADMIN_ACCOUNT_NAME" => join(["text:",$param_username]),
     "ADMIN_PASSWORD" => join(["cred:CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href]), # this credential gets created below using the user-provided password.
@@ -231,11 +232,6 @@ end
 operation "launch" do 
   description "Launch the server"
   definition "launch_server"
-end
-
-operation "enable" do
-  description "Enable the server"
-  definition "enable_server"
   # Update the links provided in the outputs.
   output_mappings do {
     $rdp_link => $server_ip_address,
@@ -247,106 +243,40 @@ operation "terminate" do
   definition "terminate_server"
 end
 
+operation "Update Server Password" do
+  description "Update/reset password."
+  definition "update_password"
+end
+
 ##########################
 # DEFINITIONS (i.e. RCL) #
 ##########################
 
 # Import and set up what is needed for the server and then launch it.
-# This does NOT install WordPress.
-define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_cloud, $param_location, $param_password, $needsSshKey, $needsSecurityGroup, $needsPlacementGroup) return @windows_server, @sec_group do
+define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_cloud, $param_location, $param_password, $needsSshKey, $needsSecurityGroup, $needsPlacementGroup, $inAzure) return @windows_server, @sec_group, $server_ip_address do
   
     # Need the cloud name later on
     $cloud_name = map( $map_cloud, $param_location, "cloud" )
+    
+    # Check if the selected cloud is supported in this account.
+    # Since different PIB scenarios include different clouds, this check is needed.
+    # It raises an error if not which stops execution at that point.
+    call checkCloudSupport($cloud_name, $param_location)
 
     # Find and import the server template - just in case it hasn't been imported to the account already
-    @pub_st=rs.publications.index(filter: ["name==Base ServerTemplate for Windows (v13.5.0-LTS)", "revision==3"])
-    @pub_st.import()
+#    @pub_st=rs.publications.index(filter: ["name==Base ServerTemplate for Windows (v13.5.0-LTS)", "revision==3"])
+#    @pub_st.import()
     
     # Create the Admin Password credential used for the server based on the user-entered password.
     $credname = join(["CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href])
     @task=rs.credentials.create({"name":$credname, "value": $param_password})
     
     # Create the SSH key that will be used (if needed)
-    if $needsSshKey
-      $ssh_key_name="cat_sshkey"
-      @key=rs.clouds.get(filter: [join(["name==",$cloud_name])]).ssh_keys(filter: [join(["resource_uid==",$ssh_key_name])])
-      if empty?(@key)
-          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Did not find SSH key, ", $ssh_key_name, ". So creating it now."])})
-          rs.clouds.get(filter: [join(["name==",$cloud_name])]).ssh_keys().create({"name" : $ssh_key_name})
-      else
-          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["SSH key, ", $ssh_key_name, " already exists."])})
-      end
-    else
-      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No SSH key is needed for cloud, ", $cloud_name])})
-    end
+    call manageSshKey($needsSshKey, $cloud_name)
     
-      # Create the placement group that will be used (if needed)
-      if $needsPlacementGroup
-        
-        # Dump the hash before doing anything
-      #$my_server_hash = to_object(@windows_server)
-      #rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "server hash before adding pg", detail: to_s($my_server_hash)})
-      
-      # Create a unique placement group name, create it, and then place the href into the server declaration.
-      $pg_name = join(split(uuid(), "-"))[0..23] # unique placement group  
-      
-      # create the placement group ....
-      $cloud_href = rs.clouds.get(filter: [join(["name==",$cloud_name])]).href
-      
-      $placement_group_name=$pg_name
-            
-      $attempts = 0
-      $succeeded = false
-      $pg_href = null
-      while ($attempts < 3) && ($succeeded == false) do
-      
-        @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
-          
-        if empty?(@placement_groups)
-          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Did not find placement group, ", $placement_group_name, ". So creating it now."])})
-          sub on_error: skip do # ignore an error - we'll deal with possibilities later
-            @task=rs.placement_groups.create({"name" : $placement_group_name, "cloud_href" : $cloud_href})
-          end
-          
-        elsif (@placement_groups.state == "available")
-          # all good 
-          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Found placement group, ", $placement_group_name])})
-          $succeeded=true
-          $pg_href = @placement_groups.href # Will use this later
-      
-        else # found a placement group but it's in some funky state, so delete and try again.
-          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["The placement group ", $placement_group_name, "was not created but is in state, ",@placement_groups.state," So deleting and recreating"])})
-          sub on_error: skip do # ignore error - we'll deal with possibilities later
-            @task=rs.placement_groups.delete({"name" : $placement_group_name, "cloud_href" : $cloud_href})
-          end
-        end  
-        $attempts=$attempts+1
-      end
-          
-      if ($succeeded == false) 
-        # If we get here, I'm going to sleep for 8 more minutes and check one last time since there is sometimes a lag between making the request to create and it existing.
-        sleep(480)
-        @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
-        if empty?(@placement_groups)
-          # just forget it - we tried ....
-          raise "Failed to create placement group"
-        end
-        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Finally. Placement group, ", $placement_group_name, " has been created."])})
-      end
-      
-      # If I get here, then I have a placement group that I need to insert into the server resource declaration.
-      $my_server_hash = to_object(@windows_server)
-      $my_server_hash["fields"]["placement_group_href"] = $pg_href
-        
-      # Dump the hash after the update
-      #rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "server hash after adding pg", detail: to_s($my_server_hash)})
-      
-      # Copy things back for the later provision ...
-      @windows_server = $my_server_hash
-
-    else # no placement group needed
-      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No placement group is needed for cloud, ", $cloud_name])})
-    end
+    # Create a placement group if needed and update the server declaration to use it
+    call managePlacementGroup($needsPlacementGroup, $cloud_name, @windows_server) retrieve @windows_server
+     
     
     # Provision the security group rules if applicable. (The security group itself is created when the server is provisioned.)
     if $needsSecurityGroup
@@ -355,18 +285,39 @@ define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_clou
 
     # Provision the server
     provision(@windows_server)
+    
+    # If deployed in Azure one needs to provide the port mapping that Azure uses.
+    if $inAzure
+       @bindings = rs.clouds.get(href: @windows_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @windows_server.current_instance().href])
+       @binding = select(@bindings, {"private_port":3389})
+       $server_ip_address = join([to_s(@windows_server.current_instance().public_ip_addresses[0]),":",@binding.public_port])
+    else
+       $server_ip_address = @windows_server.current_instance().public_ip_addresses[0]
+    end
    
 end 
 
-define enable_server(@windows_server, $inAzure) return $server_ip_address do
-  # If deployed in Azure one needs to provide the port mapping that Azure uses.
-  if $inAzure
-     @bindings = rs.clouds.get(href: @windows_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @windows_server.current_instance().href])
-     @binding = select(@bindings, {"private_port":3389})
-     $server_ip_address = join([to_s(@windows_server.current_instance().public_ip_addresses[0]),":",@binding.public_port])
-  else
-     $server_ip_address = @windows_server.current_instance().public_ip_addresses[0]
+# post launch action to change the credentials
+define update_password(@windows_server, $param_password) do
+  task_label("Update the windows server password.")
+
+  if $param_password
+    $cred_name = join(["CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href])
+    # update the credential
+    rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Updating credential, ", $cred_name])})
+    @cred = rs.credentials.get(filter: join(["name==",$cred_name]))
+    @cred.update(credential: {"value" : $param_password})
   end
+  
+  # Now run the set admin script which will use the newly updated credential.
+  $script_name = "SYS Set admin account (v13.5.0-LTS)"
+  @script = rs.right_scripts.get(filter: join(["name==",$script_name]))
+  $right_script_href=@script.href
+  @task = @windows_server.current_instance().run_executable(right_script_href: $right_script_href, inputs: {})
+  sleep_until(@task.summary =~ "^(completed|failed)")
+  if @task.summary =~ "failed"
+    raise "Failed to run " + $right_script_href
+  end  
 end
 
 # Terminate the cred and server
@@ -417,6 +368,106 @@ define terminate_server(@windows_server, @sec_group, $map_cloud, $param_location
      end
   end
 end
+
+# Checks if the account supports the selected cloud
+define checkCloudSupport($cloud_name, $param_location) do
+  # Gather up the list of clouds supported in this account.
+  @clouds = rs.clouds.get()
+  $supportedClouds = @clouds.name[] # an array of the names of the supported clouds
+  
+  # Check if the selected/mapped cloud is in the list and yell if not
+  if logic_not(contains?($supportedClouds, [$cloud_name]))
+    raise "Your trial account does not support the "+$param_location+" cloud. Contact RightScale for more information on how to enable access to that cloud."
+  end
+end
+  
+# Creates CAT SSH key if needed
+define manageSshKey($needsSshKey, $cloud_name) do
+  if $needsSshKey
+    $ssh_key_name="cat_sshkey"
+    @key=rs.clouds.get(filter: [join(["name==",$cloud_name])]).ssh_keys(filter: [join(["resource_uid==",$ssh_key_name])])
+    if empty?(@key)
+        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Did not find SSH key, ", $ssh_key_name, ". So creating it now."])})
+        rs.clouds.get(filter: [join(["name==",$cloud_name])]).ssh_keys().create({"name" : $ssh_key_name})
+    else
+        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["SSH key, ", $ssh_key_name, " already exists."])})
+    end
+  else
+    rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No SSH key is needed for cloud, ", $cloud_name])})
+  end
+end
+
+# Creates a Placement Group if needed.
+define managePlacementGroup($needsPlacementGroup, $cloud_name, @windows_server) return @windows_server do
+  # Create the placement group that will be used (if needed)
+  if $needsPlacementGroup
+    
+    # Dump the hash before doing anything
+    #$my_server_hash = to_object(@windows_server)
+    #rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "server hash before adding pg", detail: to_s($my_server_hash)})
+  
+    # Create a unique placement group name, create it, and then place the href into the server declaration.
+    $pg_name = join(split(uuid(), "-"))[0..23] # unique placement group - global variable for later deletion 
+    
+    # create the placement group ....
+    $cloud_href = rs.clouds.get(filter: [join(["name==",$cloud_name])]).href
+  
+    $placement_group_name=$pg_name
+          
+    $attempts = 0
+    $succeeded = false
+    $pg_href = null
+    while ($attempts < 3) && ($succeeded == false) do
+  
+      @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
+        
+      if empty?(@placement_groups)
+        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Did not find placement group, ", $placement_group_name, ". So creating it now."])})
+        sub on_error: skip do # ignore an error - we'll deal with possibilities later
+          @task=rs.placement_groups.create({"name" : $placement_group_name, "cloud_href" : $cloud_href})
+        end
+        
+      elsif (@placement_groups.state == "available")
+        # all good 
+        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Found placement group, ", $placement_group_name])})
+        $succeeded=true
+        $pg_href = @placement_groups.href # Will use this later
+  
+      else # found a placement group but it's in some funky state, so delete and try again.
+        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["The placement group ", $placement_group_name, "was not created but is in state, ",@placement_groups.state," So deleting and recreating"])})
+        sub on_error: skip do # ignore error - we'll deal with possibilities later
+          @task=rs.placement_groups.delete({"name" : $placement_group_name, "cloud_href" : $cloud_href})
+        end
+      end  
+      $attempts=$attempts+1
+    end
+        
+    if ($succeeded == false) 
+      # If we get here, I'm going to sleep for 8 more minutes and check one last time since there is sometimes a lag between making the request to create and it existing.
+      sleep(480)
+      @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
+      if empty?(@placement_groups)
+        # just forget it - we tried ....
+        raise "Failed to create placement group"
+      end
+      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Finally. Placement group, ", $placement_group_name, " has been created."])})
+    end
+    
+    # If I get here, then I have a placement group that I need to insert into the server resource declaration.
+    $my_server_hash = to_object(@windows_server)
+    $my_server_hash["fields"]["placement_group_href"] = $pg_href
+      
+    # Dump the hash after the update
+    #rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "server hash after adding pg", detail: to_s($my_server_hash)})
+  
+    # Copy things back for the later provision ...
+    @windows_server = $my_server_hash
+  
+  else # no placement group needed
+    rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No placement group is needed for cloud, ", $cloud_name])})
+  end
+end
+
 
 define handle_retries($attempts) do
   if $attempts < 3
