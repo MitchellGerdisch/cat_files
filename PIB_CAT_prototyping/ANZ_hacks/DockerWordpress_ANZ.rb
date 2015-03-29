@@ -83,7 +83,7 @@ mapping "map_cloud" do {
   },
   "Azure" => {   
     "cloud_provider" => "Azure", # provides a standard name for the provider to be used elsewhere in the CAT
-    "cloud" => "Azure East US",
+    "cloud" => "Azure Australia East",
     "zone" => null,
     "instance_type" => "medium",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892

@@ -54,8 +54,8 @@ parameter "param_servertype" do
   label "Windows Server Type"
   type "list"
   description "Type of Windows server to launch"
-  allowed_values "Windows 2008R2 Base Server",  # Note  this one is currenlty only supported in the vsphere env at this time.
-  "Windows 2008R2 IIS Server", # This and the others below are NOT supported in vsphere env at this time.
+  allowed_values "Windows 2008R2 Base Server",
+  "Windows 2008R2 IIS Server",
   "Windows 2008R2 Server with SQL 2008",
   "Windows 2008R2 Server with SQL 2012",
   "Windows 2012 Base Server",
@@ -102,73 +102,54 @@ mapping "map_cloud" do {
     "zone" => null, # We don't care which az AWS decides to use.
     "instance_type" => "m3.medium",
     "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-    "server_template" => "Base ServerTemplate for Windows (v13.5.0-LTS)",
-    "Windows 2008R2 Base Server" => "RightImage_Windows_2008R2_SP1_x64_v13.5.0-LTS",
-    "Windows 2008R2 IIS Server" => "RightImage_Windows_2008R2_SP1_x64_iis7.5_v13.5.0-LTS",
-    "Windows 2008R2 Server with SQL 2012" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2012_v13.5.0-LTS",
-    "Windows 2008R2 Server with SQL 2008" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2k8r2_v13.5.0-LTS",
-    "Windows 2012 IIS Server" => "RightImage_Windows_2012_x64_iis8_v13.5.0-LTS",
-    "Windows 2012 Server with SQL 2012" => "RightImage_Windows_2012_x64_sqlsvr2012_v13.5.0-LTS",
-    "Windows 2012 Base Server" => "RightImage_Windows_2012_x64_v13.5.0-LTS",
   },
   "Azure" => {   
     "cloud_provider" => "Azure", # provides a standard name for the provider to be used elsewhere in the CAT
-    "cloud" => "Azure Australia East",
+    "cloud" => "Azure West US",
     "zone" => null,
     "instance_type" => "medium",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-    "server_template" => "Base ServerTemplate for Windows (v13.5.0-LTS)",
-    "Windows 2008R2 Base Server" => "RightImage_Windows_2008R2_SP1_x64_v13.5.0-LTS",
-    "Windows 2008R2 IIS Server" => "RightImage_Windows_2008R2_SP1_x64_iis7.5_v13.5.0-LTS",
-    "Windows 2008R2 Server with SQL 2012" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2012_v13.5.0-LTS",
-    "Windows 2008R2 Server with SQL 2008" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2k8r2_v13.5.0-LTS",
-    "Windows 2012 IIS Server" => "RightImage_Windows_2012_x64_iis8_v13.5.0-LTS",
-    "Windows 2012 Server with SQL 2012" => "RightImage_Windows_2012_x64_sqlsvr2012_v13.5.0-LTS",
-    "Windows 2012 Base Server" => "RightImage_Windows_2012_x64_v13.5.0-LTS",
   },
-#  "Google" => {
-#    "cloud_provider" => "Google", # provides a standard name for the provider to be used elsewhere in the CAT
-#    "cloud" => "Google",
-#    "zone" => "us-central1-c", # launches in Google require a zone
-#    "instance_type" => "n1-standard-2",
-#    "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-#  },
+  "Google" => {
+    "cloud_provider" => "Google", # provides a standard name for the provider to be used elsewhere in the CAT
+    "cloud" => "Google",
+    "zone" => "us-central1-c", # launches in Google require a zone
+    "instance_type" => "n1-standard-2",
+    "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
+  },
   "VMware" => {
     "cloud_provider" => "vSphere", # provides a standard name for the provider to be used elsewhere in the CAT
-    "cloud" => "ANZ Bank vSphere",
-    "zone" => "anz_bank_poc", # launches in vSphere require a zone being specified  
+    "cloud" => "POC vSphere",
+    "zone" => "POC-vSphere-Zone-1", # launches in vSphere require a zone being specified  
     "instance_type" => "large",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-    "server_template" => "Base ServerTemplate for Windows (v14.1) - ANZ vSphere Support",
-    "Windows 2008R2 Base Server" => "RightImage_Windows_2008R2_SP1_x64_v14.1_VMware ANZ vSphere Support",
   }
 }
 end
 
-# MCI MAPS ARE HANDLED ABOVE IN THE CLOUD MAP
-#mapping "map_mci" do {
-#  "Windows 2008R2 Base Server" => {
-#    "mci" => "RightImage_Windows_2008R2_SP1_x64_v14.1_VMware ANZ vSphere Support"
-#  },
-#  "Windows 2008R2 IIS Server" => {
-#    "mci" => "RightImage_Windows_2008R2_SP1_x64_iis7.5_v13.5.0-LTS"
-#  },
-#  "Windows 2008R2 Server with SQL 2012" => {
-#    "mci" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2012_v13.5.0-LTS"
-#  },
-#  "Windows 2008R2 Server with SQL 2008" => {
-#    "mci" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2k8r2_v13.5.0-LTS"
-#  },
-#  "Windows 2012 IIS Server" => {
-#    "mci" => "RightImage_Windows_2012_x64_iis8_v13.5.0-LTS"
-#  },
-#  "Windows 2012 Server with SQL 2012" => {
-#    "mci" => "RightImage_Windows_2012_x64_sqlsvr2012_v13.5.0-LTS"
-#  },
-#  "Windows 2012 Base Server" => {
-#    "mci" => "RightImage_Windows_2012_x64_v13.5.0-LTS"
-#  },
-#} end
+mapping "map_mci" do {
+  "Windows 2008R2 Base Server" => {
+    "mci" => "RightImage_Windows_2008R2_SP1_x64_v13.5.0-LTS"
+  },
+  "Windows 2008R2 IIS Server" => {
+    "mci" => "RightImage_Windows_2008R2_SP1_x64_iis7.5_v13.5.0-LTS"
+  },
+  "Windows 2008R2 Server with SQL 2012" => {
+    "mci" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2012_v13.5.0-LTS"
+  },
+  "Windows 2008R2 Server with SQL 2008" => {
+    "mci" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2k8r2_v13.5.0-LTS"
+  },
+  "Windows 2012 IIS Server" => {
+    "mci" => "RightImage_Windows_2012_x64_iis8_v13.5.0-LTS"
+  },
+  "Windows 2012 Server with SQL 2012" => {
+    "mci" => "RightImage_Windows_2012_x64_sqlsvr2012_v13.5.0-LTS"
+  },
+  "Windows 2012 Base Server" => {
+    "mci" => "RightImage_Windows_2012_x64_v13.5.0-LTS"
+  },
+} end
 
 ##################
 # CONDITIONS     #
@@ -185,11 +166,6 @@ end
 
 condition "invSphere" do
   equals?(map($map_cloud, $param_location, "cloud_provider"), "vSphere")
-end
-
-# Quick mod to support other clouds when possilbe.
-condition "notInvSphere" do
-  logic_not(equals?(map($map_cloud, $param_location, "cloud_provider"), "vSphere"))
 end
 
 condition "inAzure" do
@@ -234,12 +210,14 @@ resource "windows_server", type: "server" do
   cloud map($map_cloud, $param_location, "cloud")
   datacenter map($map_cloud, $param_location, "zone")
   instance_type map($map_cloud, $param_location, "instance_type")
-  multi_cloud_image find(map($map_cloud, $param_location, $param_servertype))
+  multi_cloud_image find(map($map_mci, $param_servertype, "mci"))
   ssh_key switch($needsSshKey, 'cat_sshkey', null)
 #  security_groups switch($needsSecurityGroup, @sec_group, null)  # JIRA SS-1892
   security_group_hrefs map($map_cloud, $param_location, "sg")  # TEMPORARY UNTIL JIRA SS-1892 is solved
+  subnets 'TenantSubnet'  # Hardcoded to point at the subnet in account 80278
+  associate_public_ip_address "false"
   # NOTE: No placement group field is provided here. Instead placement groups are handled in the launch definition below.
-  server_template find(map($map_cloud, $param_location, "server_template"))
+  server_template find('Base ServerTemplate for Windows (v13.5.0-LTS)', revision: 3)
   inputs do {
     "ADMIN_ACCOUNT_NAME" => join(["text:",$param_username]),
     "ADMIN_PASSWORD" => join(["cred:CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href]), # this credential gets created below using the user-provided password.
@@ -287,8 +265,8 @@ define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_clou
     call checkCloudSupport($cloud_name, $param_location)
 
     # Find and import the server template - just in case it hasn't been imported to the account already
-#    @pub_st=rs.publications.index(filter: ["name==Base ServerTemplate for Windows (v13.5.0-LTS)", "revision==3"])
-#    @pub_st.import()
+    @pub_st=rs.publications.index(filter: ["name==Base ServerTemplate for Windows (v13.5.0-LTS)", "revision==3"])
+    @pub_st.import()
     
     # Create the Admin Password credential used for the server based on the user-entered password.
     $credname = join(["CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href])

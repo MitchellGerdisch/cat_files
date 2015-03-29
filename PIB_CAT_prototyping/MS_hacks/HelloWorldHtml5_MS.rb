@@ -25,17 +25,18 @@
 #RightScale Cloud Application Template (CAT)
 
 # DESCRIPTION
-# Deploys a Windows Server of the type chosen by the user.
+# Deploys a basic Linux server of type CentOS or Ubuntu as selected by user.
+# Installs and sets up simple HTML5 website with user-supplied "Hello World" type text.
 # It automatically imports the ServerTemplate it needs.
-# Also, if needed by the target cloud, the security group and/or ssh key is automatically created by the CAT.
+# Also, if needed by the target cloud, the security group and/or ssh key, etc. is automatically created by the CAT.
 
 
 # Required prolog
-name 'Windows Server'
+name 'Hello World Web Site'
 rs_ca_ver 20131202
-short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)\n
-Launches a Windows server"
-long_description "Launches a Windows server."
+short_description "![HTML 5](https://cdn0.iconfinder.com/data/icons/HTML5/128/HTML_Logo.png)\n
+Launches a simple HTML 5 web site with user-provided text."
+long_description "Launches a simple HTML 5 website with user-provided text."
 
 ##################
 # User inputs    #
@@ -46,50 +47,34 @@ parameter "param_location" do
   type "string" 
   description "Cloud to deploy in." 
   allowed_values "AWS", "Azure", "VMware"
-  default "Azure"
+  default "AWS"
 end
 
 parameter "param_servertype" do
   category "User Inputs"
-  label "Windows Server Type"
+  label "Linux Server Type"
   type "list"
-  description "Type of Windows server to launch"
-  allowed_values "Windows 2008R2 Base Server",  # Note  this one is currenlty only supported in the vsphere env at this time.
-  "Windows 2008R2 IIS Server", # This and the others below are NOT supported in vsphere env at this time.
-  "Windows 2008R2 Server with SQL 2008",
-  "Windows 2008R2 Server with SQL 2012",
-  "Windows 2012 Base Server",
-  "Windows 2012 IIS Server",
-  "Windows 2012 Server with SQL 2012"
-  default "Windows 2008R2 Base Server"
+  description "Type of Linux server to launch"
+  allowed_values "CentOS 6.6", 
+    "Ubuntu 12.04"
+  default "CentOS 6.6"
 end
 
-parameter "param_username" do 
+parameter "param_webtext" do 
   category "User Inputs"
-  label "Windows Username" 
-  description "Username (will be created)."
+  label "Web Site Text" 
   type "string" 
-  no_echo "false"
+  description "Text to display on the web site." 
+  default "Hello World!"
 end
-
-parameter "param_password" do 
-  category "User Inputs"
-  label "Windows Password" 
-  description "Password (will be created).
-  Windows password complexity requirements = at least 8 characters and contain at least 3 of: 
-  Uppercase characters, Lowercase characters, Digits 0-9, Non alphanumeric characters." 
-  type "string" 
-  no_echo "true"
-end
-
 
 ################################
 # Outputs returned to the user #
 ################################
-output "rdp_link" do
-  label "RDP Link"
+output "site_link" do
+  label "Web Site URL"
   category "Output"
-  description "RDP Link to the Windows server."
+  description "Click to see your web site."
 end
 
 ##############
@@ -102,73 +87,39 @@ mapping "map_cloud" do {
     "zone" => null, # We don't care which az AWS decides to use.
     "instance_type" => "m3.medium",
     "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-    "server_template" => "Base ServerTemplate for Windows (v13.5.0-LTS)",
-    "Windows 2008R2 Base Server" => "RightImage_Windows_2008R2_SP1_x64_v13.5.0-LTS",
-    "Windows 2008R2 IIS Server" => "RightImage_Windows_2008R2_SP1_x64_iis7.5_v13.5.0-LTS",
-    "Windows 2008R2 Server with SQL 2012" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2012_v13.5.0-LTS",
-    "Windows 2008R2 Server with SQL 2008" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2k8r2_v13.5.0-LTS",
-    "Windows 2012 IIS Server" => "RightImage_Windows_2012_x64_iis8_v13.5.0-LTS",
-    "Windows 2012 Server with SQL 2012" => "RightImage_Windows_2012_x64_sqlsvr2012_v13.5.0-LTS",
-    "Windows 2012 Base Server" => "RightImage_Windows_2012_x64_v13.5.0-LTS",
   },
   "Azure" => {   
     "cloud_provider" => "Azure", # provides a standard name for the provider to be used elsewhere in the CAT
-    "cloud" => "Azure Australia East",
+    "cloud" => "Azure West US",
     "zone" => null,
     "instance_type" => "medium",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-    "server_template" => "Base ServerTemplate for Windows (v13.5.0-LTS)",
-    "Windows 2008R2 Base Server" => "RightImage_Windows_2008R2_SP1_x64_v13.5.0-LTS",
-    "Windows 2008R2 IIS Server" => "RightImage_Windows_2008R2_SP1_x64_iis7.5_v13.5.0-LTS",
-    "Windows 2008R2 Server with SQL 2012" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2012_v13.5.0-LTS",
-    "Windows 2008R2 Server with SQL 2008" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2k8r2_v13.5.0-LTS",
-    "Windows 2012 IIS Server" => "RightImage_Windows_2012_x64_iis8_v13.5.0-LTS",
-    "Windows 2012 Server with SQL 2012" => "RightImage_Windows_2012_x64_sqlsvr2012_v13.5.0-LTS",
-    "Windows 2012 Base Server" => "RightImage_Windows_2012_x64_v13.5.0-LTS",
   },
-#  "Google" => {
-#    "cloud_provider" => "Google", # provides a standard name for the provider to be used elsewhere in the CAT
-#    "cloud" => "Google",
-#    "zone" => "us-central1-c", # launches in Google require a zone
-#    "instance_type" => "n1-standard-2",
-#    "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-#  },
+  "Google" => {
+    "cloud_provider" => "Google", # provides a standard name for the provider to be used elsewhere in the CAT
+    "cloud" => "Google",
+    "zone" => "us-central1-c", # launches in Google require a zone
+    "instance_type" => "n1-standard-2",
+    "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
+  },
   "VMware" => {
     "cloud_provider" => "vSphere", # provides a standard name for the provider to be used elsewhere in the CAT
-    "cloud" => "ANZ Bank vSphere",
-    "zone" => "anz_bank_poc", # launches in vSphere require a zone being specified  
+    "cloud" => "POC vSphere",
+    "zone" => "POC-vSphere-Zone-1", # launches in vSphere require a zone being specified  
     "instance_type" => "large",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-    "server_template" => "Base ServerTemplate for Windows (v14.1) - ANZ vSphere Support",
-    "Windows 2008R2 Base Server" => "RightImage_Windows_2008R2_SP1_x64_v14.1_VMware ANZ vSphere Support",
   }
 }
 end
 
-# MCI MAPS ARE HANDLED ABOVE IN THE CLOUD MAP
-#mapping "map_mci" do {
-#  "Windows 2008R2 Base Server" => {
-#    "mci" => "RightImage_Windows_2008R2_SP1_x64_v14.1_VMware ANZ vSphere Support"
-#  },
-#  "Windows 2008R2 IIS Server" => {
-#    "mci" => "RightImage_Windows_2008R2_SP1_x64_iis7.5_v13.5.0-LTS"
-#  },
-#  "Windows 2008R2 Server with SQL 2012" => {
-#    "mci" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2012_v13.5.0-LTS"
-#  },
-#  "Windows 2008R2 Server with SQL 2008" => {
-#    "mci" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2k8r2_v13.5.0-LTS"
-#  },
-#  "Windows 2012 IIS Server" => {
-#    "mci" => "RightImage_Windows_2012_x64_iis8_v13.5.0-LTS"
-#  },
-#  "Windows 2012 Server with SQL 2012" => {
-#    "mci" => "RightImage_Windows_2012_x64_sqlsvr2012_v13.5.0-LTS"
-#  },
-#  "Windows 2012 Base Server" => {
-#    "mci" => "RightImage_Windows_2012_x64_v13.5.0-LTS"
-#  },
-#} end
+mapping "map_mci" do {
+  "CentOS 6.6" => {
+    "mci" => "RightImage_CentOS_6.6_x64_v13.5_LTS"
+  },
+  "Ubuntu 12.04" => {
+    "mci" => "RightImage_Ubuntu_12.04_x64_v13.5_LTS"
+  },
+} end
 
 ##################
 # CONDITIONS     #
@@ -187,11 +138,6 @@ condition "invSphere" do
   equals?(map($map_cloud, $param_location, "cloud_provider"), "vSphere")
 end
 
-# Quick mod to support other clouds when possilbe.
-condition "notInvSphere" do
-  logic_not(equals?(map($map_cloud, $param_location, "cloud_provider"), "vSphere"))
-end
-
 condition "inAzure" do
   equals?(map($map_cloud, $param_location, "cloud_provider"), "Azure")
 end
@@ -208,44 +154,58 @@ end
 # Note: Even though not all environments need or use security groups, the launch operation/definition will decide whether or not
 # to provision the security group and rules.
 resource "sec_group", type: "security_group" do
-  name join(["WindowsServerSecGrp-",@@deployment.href])
-  description "Windows Server security group."
+  name join(["LinuxServerSecGrp-",@@deployment.href])
+  description "Linux Server security group."
   cloud map( $map_cloud, $param_location, "cloud" )
 end
 
-resource "sec_group_rule_rdp", type: "security_group_rule" do
-  name "Windows Server RDP Rule"
-  description "Allow RDP access."
+resource "sec_group_rule_ssh", type: "security_group_rule" do
+  name "Web server SSH Rule"
+  description "Allow SSH access."
   source_type "cidr_ips"
   security_group @sec_group
   protocol "tcp"
   direction "ingress"
   cidr_ips "0.0.0.0/0"
   protocol_details do {
-    "start_port" => "3389",
-    "end_port" => "3389"
+    "start_port" => "22",
+    "end_port" => "22"
+  } end
+end
+
+resource "sec_group_rule_http", type: "security_group_rule" do
+  name "Web server HTTP Rule"
+  description "Allow HTTP access."
+  source_type "cidr_ips"
+  security_group @sec_group
+  protocol "tcp"
+  direction "ingress"
+  cidr_ips "0.0.0.0/0"
+  protocol_details do {
+    "start_port" => "80",
+    "end_port" => "80"
   } end
 end
 
 
 ### Server Definition ###
-resource "windows_server", type: "server" do
-  name 'Windows Server'
+resource "linux_server", type: "server" do
+  name 'Web Site Server'
   cloud map($map_cloud, $param_location, "cloud")
   datacenter map($map_cloud, $param_location, "zone")
   instance_type map($map_cloud, $param_location, "instance_type")
-  multi_cloud_image find(map($map_cloud, $param_location, $param_servertype))
+  multi_cloud_image find(map($map_mci, $param_servertype, "mci"))
   ssh_key switch($needsSshKey, 'cat_sshkey', null)
 #  security_groups switch($needsSecurityGroup, @sec_group, null)  # JIRA SS-1892
   security_group_hrefs map($map_cloud, $param_location, "sg")  # TEMPORARY UNTIL JIRA SS-1892 is solved
-  # NOTE: No placement group field is provided here. Instead placement groups are handled in the launch definition below.
-  server_template find(map($map_cloud, $param_location, "server_template"))
-  inputs do {
-    "ADMIN_ACCOUNT_NAME" => join(["text:",$param_username]),
-    "ADMIN_PASSWORD" => join(["cred:CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href]), # this credential gets created below using the user-provided password.
-    "FIREWALL_OPEN_PORTS_TCP" => "text:3389",
-    "SYS_WINDOWS_TZINFO" => "text:Pacific Standard Time",  
-  } end
+  subnets 'TenantSubnet'  # Hardcoded to point at the subnet in account 80278
+  associate_public_ip_address "false"
+# NOTE: No placement group field is provided here. Instead placement groups are handled in the launch definition below.
+  server_template find('Simple HTML5 Website', revision: 4)
+#  WEBTEXT input is managed at the deployment level so that it is persistent across stop/starts
+#  inputs do {
+#    "WEBTEXT" => join(["text:", $param_webtext])
+#  } end
 end
 
 
@@ -255,9 +215,8 @@ end
 operation "launch" do 
   description "Launch the server"
   definition "launch_server"
-  # Update the links provided in the outputs.
   output_mappings do {
-    $rdp_link => $server_ip_address,
+    $site_link => $server_ip_address,
   } end
 end
 
@@ -266,130 +225,151 @@ operation "terminate" do
   definition "terminate_server"
 end
 
-operation "Update Server Password" do
-  description "Update/reset password."
-  definition "update_password"
+
+operation "Update Web Site Text" do
+  description "Update the text displayed on the web site."
+  definition "update_website"
 end
+
+
+
 
 ##########################
 # DEFINITIONS (i.e. RCL) #
 ##########################
 
 # Import and set up what is needed for the server and then launch it.
-define launch_server(@windows_server, @sec_group, @sec_group_rule_rdp, $map_cloud, $param_location, $param_password, $needsSshKey, $needsSecurityGroup, $needsPlacementGroup, $inAzure) return @windows_server, @sec_group, $server_ip_address do
+# This does NOT install WordPress.
+define launch_server(@linux_server, @sec_group, @sec_group_rule_ssh, @sec_group_rule_http, $map_cloud, $param_location, $param_webtext, $needsSshKey, $needsSecurityGroup, $needsPlacementGroup, $inAzure) return @linux_server, @sec_group, $server_ip_address, $param_webtext do
   
     # Need the cloud name later on
     $cloud_name = map( $map_cloud, $param_location, "cloud" )
-    
+  
     # Check if the selected cloud is supported in this account.
     # Since different PIB scenarios include different clouds, this check is needed.
     # It raises an error if not which stops execution at that point.
     call checkCloudSupport($cloud_name, $param_location)
 
     # Find and import the server template - just in case it hasn't been imported to the account already
-#    @pub_st=rs.publications.index(filter: ["name==Base ServerTemplate for Windows (v13.5.0-LTS)", "revision==3"])
-#    @pub_st.import()
-    
-    # Create the Admin Password credential used for the server based on the user-entered password.
-    $credname = join(["CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href])
-    @task=rs.credentials.create({"name":$credname, "value": $param_password})
+    @pub_st=rs.publications.index(filter: ["name==Simple HTML5 Website", "revision==4"])
+    @pub_st.import()
     
     # Create the SSH key that will be used (if needed)
     call manageSshKey($needsSshKey, $cloud_name)
     
     # Create a placement group if needed and update the server declaration to use it
-    call managePlacementGroup($needsPlacementGroup, $cloud_name, @windows_server) retrieve @windows_server
-     
+    call managePlacementGroup($needsPlacementGroup, $cloud_name, @linux_server) retrieve @linux_server
     
     # Provision the security group rules if applicable. (The security group itself is created when the server is provisioned.)
     if $needsSecurityGroup
-      provision(@sec_group_rule_rdp)
+      provision(@sec_group_rule_ssh)
+      provision(@sec_group_rule_http)
     end
-
+    
+    # The CREDENTIAL mechanism in CM is used to store the web text so it can be remembered
+    # TODO: Use a deployment-level tag to store this info instead since the deployment survives stop/starts.
+    $cred_name = join(["HELLOWORLDTEXT-",@@deployment.href])
+    @cred = rs.credentials.get(filter: join(["name==",$cred_name]))
+    if empty?(@cred)  # this is the first time through so create the cred to store the info
+      @task=rs.credentials.create({"name":$cred_name, "value": $param_webtext})
+    end
+    
+    # set the deployment level WEBTEXT input so it is inherited by the launched server
+    @cred = rs.credentials.get(filter: join(["name==",$cred_name]), view:"sensitive")
+    $cred_hash = to_object(@cred)
+    $my_webtext = to_s($cred_hash["details"][0]["value"])
+    $inp = {
+     "WEBTEXT": join(["text:", $my_webtext])
+     }
+    @@deployment.multi_update_inputs(inputs: $inp)
+    
     # Provision the server
-    provision(@windows_server)
+    provision(@linux_server)
     
     # If deployed in Azure one needs to provide the port mapping that Azure uses.
     if $inAzure
-       @bindings = rs.clouds.get(href: @windows_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @windows_server.current_instance().href])
-       @binding = select(@bindings, {"private_port":3389})
-       $server_ip_address = join([to_s(@windows_server.current_instance().public_ip_addresses[0]),":",@binding.public_port])
+       @bindings = rs.clouds.get(href: @linux_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @linux_server.current_instance().href])
+       @binding = select(@bindings, {"private_port":80})
+       $server_ip_address = join(["http://", to_s(@linux_server.current_instance().public_ip_addresses[0]), ":", @binding.public_port])
     else
-       $server_ip_address = @windows_server.current_instance().public_ip_addresses[0]
+       $server_ip_address = join(["http://", to_s(@linux_server.current_instance().public_ip_addresses[0])])
     end
-   
+    
+    # Take this opportunity to clean up any orphaned creds
+    call clean_webtext_stores() 
+    
 end 
 
-# post launch action to change the credentials
-define update_password(@windows_server, $param_password) do
-  task_label("Update the windows server password.")
-
-  if $param_password
-    $cred_name = join(["CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href])
-    # update the credential
-    rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Updating credential, ", $cred_name])})
-    @cred = rs.credentials.get(filter: join(["name==",$cred_name]))
-    @cred.update(credential: {"value" : $param_password})
-  end
+#
+# Modify the web page text
+#
+define update_website(@linux_server, $param_webtext) return $param_webtext do
+  task_label("Update Web Page")
   
-  # Now run the set admin script which will use the newly updated credential.
-  $script_name = "SYS Set admin account (v13.5.0-LTS)"
+  # Update the cred that contains the web text for later use
+  $cred_name = join(["HELLOWORLDTEXT-",@@deployment.href])
+  @cred = rs.credentials.get(filter: join(["name==",$cred_name]))
+  @cred.update(credential: {"value" : $param_webtext})
+    
+  # Update the deployment and server with the new webtext
+  $inp = {
+   "WEBTEXT": join(["text:", $param_webtext])
+  }
+  @@deployment.multi_update_inputs(inputs: $inp)
+  
+  # The text also needs to be pushed to the existing server level since currently deployment level inputs are not inherited by CAT-provisioned server
+  @linux_server.current_instance().multi_update_inputs(inputs: $inp)
+   
+  # Now run the script to update the web page.
+  $script_name = "Hello World - HTML5"
   @script = rs.right_scripts.get(filter: join(["name==",$script_name]))
   $right_script_href=@script.href
-  @task = @windows_server.current_instance().run_executable(right_script_href: $right_script_href, inputs: {})
-  sleep_until(@task.summary =~ "^(completed|failed)")
+  @task = @linux_server.current_instance().run_executable(right_script_href: $right_script_href, inputs: {})
+#  @task = @linux_server.current_instance().run_executable(right_script_href: $right_script_href, inputs: {WEBTEXT: "text:"+$param_webtext})
   if @task.summary =~ "failed"
     raise "Failed to run " + $right_script_href
   end  
 end
 
-# Terminate the cred and server
-define terminate_server(@windows_server, @sec_group, $map_cloud, $param_location, $needsSecurityGroup, $needsPlacementGroup) do
-  
-  # Delete the cred we created for the user-provided password
-  $credname = join(["CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href])
-  @cred=rs.credentials.get(filter: [join(["name==",$credname])])
-  @cred.destroy()
-  
-  # find the placement group before deleting the server and then delete the PG once the server is gone
-  if $needsPlacementGroup 
-    sub on_error: skip do  # if might throw an error if we are stopped and there's nothing existing at this point.
-      @pg_res = @windows_server.current_instance().placement_group()
-      $$pg_name = @pg_res.name
-      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Placement group associated with the server: ", $$pg_name])})
-    end
-  end
+# Terminate the server
+define terminate_server(@linux_server, @sec_group, $map_cloud, $param_location, $needsSecurityGroup, $needsPlacementGroup) do
     
-  # Terminate the server
-  delete(@windows_server)
-  
-  if $needsSecurityGroup
-    rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Deleting security group, ", @sec_group])})
-    @sec_group.destroy()
-  end
-  
-  if $needsPlacementGroup
-     rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Placement group name to delete: ", $$pg_name])})
-  
-     # Sleep a bit to make sure server is cleaned up and I can delete the PG
-     sleep(120)
-
-     $cloud_name = map( $map_cloud, $param_location, "cloud" )
-     $cloud_href = rs.clouds.get(filter: [join(["name==",$cloud_name])]).href
+    # find the placement group before deleting the server and then delete the PG once the server is gone
+    if $needsPlacementGroup 
+      sub on_error: skip do  # if might throw an error if we are stopped and there's nothing existing at this point.
+        @pg_res = @linux_server.current_instance().placement_group()
+        $$pg_name = @pg_res.name
+        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Placement group associated with the server: ", $$pg_name])})
+      end
+    end
+    
+    # Terminate the server
+    delete(@linux_server)
+    
+    if $needsSecurityGroup
+      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Deleting security group, ", @sec_group])})
+      @sec_group.destroy()
+    end
+    
+    if $needsPlacementGroup
+       rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Placement group name to delete: ", $$pg_name])})
        
-     @pgs=rs.placement_groups.get(filter:[join(["cloud_href==",$cloud_href]), join(["name==",$$pg_name])])
-       
-     foreach @pg in @pgs do
-       if @pg.name == $$pg_name
-         rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Found placement group and deleting: ", @pg.name])})
-         $attempts = 0
-         sub on_error: handle_retries($attempts) do
-           $attempts = $attempts + 1
-           @pg.destroy()
+       $cloud_name = map( $map_cloud, $param_location, "cloud" )
+       $cloud_href = rs.clouds.get(filter: [join(["name==",$cloud_name])]).href
+         
+       @pgs=rs.placement_groups.get(filter:[join(["cloud_href==",$cloud_href]), join(["name==",$$pg_name])])
+         
+       foreach @pg in @pgs do
+         if @pg.name == $$pg_name
+           rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Found placement group and deleting: ", @pg.name])})
+           $attempts = 0
+           sub on_error: handle_retries($attempts) do
+             $attempts = $attempts + 1
+             @pg.destroy()
+           end
          end
        end
-     end
-  end
+    end
 end
 
 # Checks if the account supports the selected cloud
@@ -421,12 +401,12 @@ define manageSshKey($needsSshKey, $cloud_name) do
 end
 
 # Creates a Placement Group if needed.
-define managePlacementGroup($needsPlacementGroup, $cloud_name, @windows_server) return @windows_server do
+define managePlacementGroup($needsPlacementGroup, $cloud_name, @linux_server) return @linux_server do
   # Create the placement group that will be used (if needed)
   if $needsPlacementGroup
     
     # Dump the hash before doing anything
-    #$my_server_hash = to_object(@windows_server)
+    #$my_server_hash = to_object(@linux_server)
     #rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "server hash before adding pg", detail: to_s($my_server_hash)})
   
     # Create a unique placement group name, create it, and then place the href into the server declaration.
@@ -477,20 +457,41 @@ define managePlacementGroup($needsPlacementGroup, $cloud_name, @windows_server) 
     end
     
     # If I get here, then I have a placement group that I need to insert into the server resource declaration.
-    $my_server_hash = to_object(@windows_server)
+    $my_server_hash = to_object(@linux_server)
     $my_server_hash["fields"]["placement_group_href"] = $pg_href
       
     # Dump the hash after the update
     #rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "server hash after adding pg", detail: to_s($my_server_hash)})
   
     # Copy things back for the later provision ...
-    @windows_server = $my_server_hash
+    @linux_server = $my_server_hash
   
   else # no placement group needed
     rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No placement group is needed for cloud, ", $cloud_name])})
   end
 end
 
+# Cleans up any orphaned webtext creds from old deployments.
+define clean_webtext_stores() do
+  
+  # Find all the hello world cred stores
+  $cred_root = "HELLOWORLDTEXT-"
+  @creds = rs.credentials.get(filter: join(["name==",$cred_root]))
+      
+  # Find all the current deployments
+  @deployments = rs.deployments.get()
+  $deployment_hrefs = @deployments.href[]
+    
+  # Now find any creds that don't belong to a deployment
+  foreach @cred in @creds do
+    $cred_name = @cred.name
+    $check_value = split($cred_name, "-")[1]
+    if logic_not(contains?($deployment_hrefs, [$check_value]))
+      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["deleting credential, ", @cred.name])})
+      @cred.destroy()
+    end
+  end
+end
 
 define handle_retries($attempts) do
   if $attempts < 3
@@ -500,5 +501,3 @@ define handle_retries($attempts) do
     $_error_behavior = "skip"
   end
 end
-
-
