@@ -328,6 +328,13 @@ rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: 
     elsif $invSphere
 rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "inVsphere block"})    
        $server_ip_address = @windows_server.current_instance().private_ip_addresses[0]
+       $address_tries = 0
+       while (logic_not($server_ip_address) && ($address_tries < 3))  do
+         sleep(60)  # sleep a bit to see if that will let things settle down so IP address can be retrieved
+         $server_ip_address = @windows_server.current_instance().private_ip_addresses[0]
+         $address_tries = $address_tries + 1
+rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["server_ip_address in vSphere loop, ", $server_ip_address])})
+       end
     else
 rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "in else block"})
        $server_ip_address = @windows_server.current_instance().public_ip_addresses[0]
