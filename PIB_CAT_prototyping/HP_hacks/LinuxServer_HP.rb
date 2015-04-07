@@ -45,8 +45,18 @@ parameter "param_location" do
   label "Cloud" 
   type "string" 
   description "Cloud to deploy in." 
-  allowed_values "AWS", "VMware"
-  default "AWS"
+  allowed_values "Azure", "Google"
+  default "Azure"
+end
+
+parameter "param_servertype" do
+  category "User Inputs"
+  label "Linux Server Type"
+  type "list"
+  description "Type of Linux server to launch"
+  allowed_values "CentOS 6.6", 
+    "Ubuntu 12.04"
+  default "CentOS 6.6"
 end
 
 ################################
@@ -71,11 +81,10 @@ end
 mapping "map_cloud" do {
   "AWS" => {
     "cloud_provider" => "AWS", # provides a standard name for the provider to be used elsewhere in the CAT
-    "cloud" => "EC2 ap-southeast-2",
+    "cloud" => "EC2 us-west-1",
     "zone" => null, # We don't care which az AWS decides to use.
     "instance_type" => "m3.medium",
     "sg" => '@sec_group',  # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-    "mci_name" => "RightImage_CentOS_6.5_x64_v14.1",
   },
   "Azure" => {   
     "cloud_provider" => "Azure", # provides a standard name for the provider to be used elsewhere in the CAT
@@ -93,14 +102,22 @@ mapping "map_cloud" do {
   },
   "VMware" => {
     "cloud_provider" => "vSphere", # provides a standard name for the provider to be used elsewhere in the CAT
-    "cloud" => "ANZ Bank vSphere",
-    "zone" => "anz_bank_poc", # launches in vSphere require a zone being specified  
+    "cloud" => "POC vSphere",
+    "zone" => "POC-vSphere-Zone-1", # launches in vSphere require a zone being specified  
     "instance_type" => "large",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
-    "mci_name" => "RightImage_CentOS_6.5_x64_v14.1_vSphere",   # Need to find the MCI for vSphere environments.
   }
 }
 end
+
+mapping "map_mci" do {
+  "CentOS 6.6" => {
+    "mci" => "RightImage_CentOS_6.6_x64_v13.5_LTS"
+  },
+  "Ubuntu 12.04" => {
+    "mci" => "RightImage_Ubuntu_12.04_x64_v13.5_LTS"
+  },
+} end
 
 ##################
 # CONDITIONS     #
@@ -161,12 +178,12 @@ resource "linux_server", type: "server" do
   cloud map($map_cloud, $param_location, "cloud")
   datacenter map($map_cloud, $param_location, "zone")
   instance_type map($map_cloud, $param_location, "instance_type")
-  multi_cloud_image find(map($map_cloud, $param_location, "mci_name"))
+  multi_cloud_image find(map($map_mci, $param_servertype, "mci"))
   ssh_key switch($needsSshKey, 'cat_sshkey', null)
 #  security_groups switch($needsSecurityGroup, @sec_group, null)  # JIRA SS-1892
   security_group_hrefs map($map_cloud, $param_location, "sg")  # TEMPORARY UNTIL JIRA SS-1892 is solved
 # NOTE: No placement group field is provided here. Instead placement groups are handled in the launch definition below.
-  server_template find('Base ServerTemplate for Linux (RSB) (v14.1.0)', revision: 13)
+  server_template find('Base ServerTemplate for Linux (RSB) (v13.5.11-LTS)', revision: 23)
 end
 
 
@@ -176,11 +193,6 @@ end
 operation "launch" do 
   description "Launch the server"
   definition "launch_server"
-end
-
-operation "enable" do
-  description "Enable the server"
-  definition "enable_server"
   # Update the links provided in the outputs.
   output_mappings do {
     $ssh_link => $server_ip_address,
@@ -198,97 +210,27 @@ end
 
 # Import and set up what is needed for the server and then launch it.
 # This does NOT install WordPress.
-define launch_server(@linux_server, @sec_group, @sec_group_rule_ssh, $map_cloud, $param_location, $needsSshKey, $needsSecurityGroup, $needsPlacementGroup) return @linux_server, @sec_group do
+define launch_server(@linux_server, @sec_group, @sec_group_rule_ssh, $map_cloud, $param_location, $needsSshKey, $needsSecurityGroup, $needsPlacementGroup, $inAzure) return @linux_server, @sec_group, $server_ip_address do
   
     # Need the cloud name later on
     $cloud_name = map( $map_cloud, $param_location, "cloud" )
 
+    # Check if the selected cloud is supported in this account.
+    # Since different PIB scenarios include different clouds, this check is needed.
+    # It raises an error if not which stops execution at that point.
+    call checkCloudSupport($cloud_name, $param_location)
+
+    
     # Find and import the server template - just in case it hasn't been imported to the account already
-    @pub_st=rs.publications.index(filter: ["name==Base ServerTemplate for Linux (RSB) (v14.1.0)", "revision==13"])
+    @pub_st=rs.publications.index(filter: ["name==Base ServerTemplate for Linux (RSB) (v13.5.11-LTS)", "revision==23"])
     @pub_st.import()
     
     # Create the SSH key that will be used (if needed)
-    if $needsSshKey
-      $ssh_key_name="cat_sshkey"
-      @key=rs.clouds.get(filter: [join(["name==",$cloud_name])]).ssh_keys(filter: [join(["resource_uid==",$ssh_key_name])])
-      if empty?(@key)
-          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Did not find SSH key, ", $ssh_key_name, ". So creating it now."])})
-          rs.clouds.get(filter: [join(["name==",$cloud_name])]).ssh_keys().create({"name" : $ssh_key_name})
-      else
-          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["SSH key, ", $ssh_key_name, " already exists."])})
-      end
-    else
-      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No SSH key is needed for cloud, ", $cloud_name])})
-    end
-    
-    # Create the placement group that will be used (if needed)
-    if $needsPlacementGroup
-      
-      # Dump the hash before doing anything
-      #$my_server_hash = to_object(@linux_server)
-      #rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "server hash before adding pg", detail: to_s($my_server_hash)})
-   
-      # Create a unique placement group name, create it, and then place the href into the server declaration.
-      $pg_name = join(split(uuid(), "-"))[0..23] # unique placement group - global variable for later deletion 
-      
-      # create the placement group ....
-      $cloud_href = rs.clouds.get(filter: [join(["name==",$cloud_name])]).href
+    call manageSshKey($needsSshKey, $cloud_name)
 
-      $placement_group_name=$pg_name
-            
-      $attempts = 0
-      $succeeded = false
-      $pg_href = null
-      while ($attempts < 3) && ($succeeded == false) do
+    # Create a placement group if needed and update the server declaration to use it
+    call managePlacementGroup($needsPlacementGroup, $cloud_name, @linux_server) retrieve @linux_server
 
-        @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
-          
-        if empty?(@placement_groups)
-          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Did not find placement group, ", $placement_group_name, ". So creating it now."])})
-          sub on_error: skip do # ignore an error - we'll deal with possibilities later
-            @task=rs.placement_groups.create({"name" : $placement_group_name, "cloud_href" : $cloud_href})
-          end
-          
-        elsif (@placement_groups.state == "available")
-          # all good 
-          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Found placement group, ", $placement_group_name])})
-          $succeeded=true
-          $pg_href = @placement_groups.href # Will use this later
-
-        else # found a placement group but it's in some funky state, so delete and try again.
-          rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["The placement group ", $placement_group_name, "was not created but is in state, ",@placement_groups.state," So deleting and recreating"])})
-          sub on_error: skip do # ignore error - we'll deal with possibilities later
-            @task=rs.placement_groups.delete({"name" : $placement_group_name, "cloud_href" : $cloud_href})
-          end
-        end  
-        $attempts=$attempts+1
-      end
-          
-      if ($succeeded == false) 
-        # If we get here, I'm going to sleep for 8 more minutes and check one last time since there is sometimes a lag between making the request to create and it existing.
-        sleep(480)
-        @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
-        if empty?(@placement_groups)
-          # just forget it - we tried ....
-          raise "Failed to create placement group"
-        end
-        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Finally. Placement group, ", $placement_group_name, " has been created."])})
-      end
-      
-      # If I get here, then I have a placement group that I need to insert into the server resource declaration.
-      $my_server_hash = to_object(@linux_server)
-      $my_server_hash["fields"]["placement_group_href"] = $pg_href
-        
-      # Dump the hash after the update
-      #rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "server hash after adding pg", detail: to_s($my_server_hash)})
-
-      # Copy things back for the later provision ...
-      @linux_server = $my_server_hash
-
-    else # no placement group needed
-      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No placement group is needed for cloud, ", $cloud_name])})
-    end
-    
     # Provision the security group rules if applicable. (The security group itself is created when the server is provisioned.)
     if $needsSecurityGroup
       provision(@sec_group_rule_ssh)
@@ -296,31 +238,20 @@ define launch_server(@linux_server, @sec_group, @sec_group_rule_ssh, $map_cloud,
 
     # Provision the server
     provision(@linux_server)
+    
+    # If deployed in Azure one needs to provide the port mapping that Azure uses.
+    if $inAzure
+       @bindings = rs.clouds.get(href: @linux_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @linux_server.current_instance().href])
+       @binding = select(@bindings, {"private_port":22})
+       $server_ip_address = join(["-p ", @binding.public_port, " rightscale@", to_s(@linux_server.current_instance().public_ip_addresses[0])])
+    else
+       $server_ip_address = join(["rightscale@", @linux_server.current_instance().public_ip_addresses[0]])
+    end
    
 end 
 
-# Enabling is really just fixing the links to accommodate the Azure port mapping stuff.
-define enable_server(@linux_server, $inAzure, $invSphere) return $server_ip_address do
-  rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Environment flags - inAzure: ",$inAzure," invSphere: ",$invSphere])})
 
-  # If deployed in Azure one needs to provide the port mapping that Azure uses.
-  $server_ip_address = null
-  if $inAzure
-     rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "In Azure environment. Setting up IP link accordingly"})
-     @bindings = rs.clouds.get(href: @linux_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @linux_server.current_instance().href])
-     @binding = select(@bindings, {"private_port":22})
-     $server_ip_address = join(["-p ", @binding.public_port, " rightscale@", to_s(@linux_server.current_instance().public_ip_addresses[0])])
-  elsif $invSphere
-     rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "In vSphere environment. Setting up IP link accordingly"})
-     $server_ip_address = join(["rightscale@", @linux_server.current_instance().private_ip_addresses[0]])
-  else
-     rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "Not in Azure or vSphere env. So just normal IP link stuff."})
-     $server_ip_address = join(["rightscale@", @linux_server.current_instance().public_ip_addresses[0]])
-  end
-end
-
-
-# Terminate the server
+# Terminate the server and clean up the other items around it.
 define terminate_server(@linux_server, @sec_group, $map_cloud, $param_location, $needsSecurityGroup, $needsPlacementGroup) do
     
     # find the placement group before deleting the server and then delete the PG once the server is gone
@@ -335,11 +266,13 @@ define terminate_server(@linux_server, @sec_group, $map_cloud, $param_location, 
     # Terminate the server
     delete(@linux_server)
     
+    # Clean up the security group
     if $needsSecurityGroup
       rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Deleting security group, ", @sec_group])})
       @sec_group.destroy()
     end
     
+    # Now that the server is gone, we can clean up the placement group
     if $needsPlacementGroup
        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Placement group name to delete: ", $$pg_name])})
        
@@ -361,6 +294,106 @@ define terminate_server(@linux_server, @sec_group, $map_cloud, $param_location, 
     end
 end
 
+# Checks if the account supports the selected cloud
+define checkCloudSupport($cloud_name, $param_location) do
+  # Gather up the list of clouds supported in this account.
+  @clouds = rs.clouds.get()
+  $supportedClouds = @clouds.name[] # an array of the names of the supported clouds
+  
+  # Check if the selected/mapped cloud is in the list and yell if not
+  if logic_not(contains?($supportedClouds, [$cloud_name]))
+    raise "Your trial account does not support the "+$param_location+" cloud. Contact RightScale for more information on how to enable access to that cloud."
+  end
+end
+  
+# Creates CAT SSH key if needed
+define manageSshKey($needsSshKey, $cloud_name) do
+  if $needsSshKey
+    $ssh_key_name="cat_sshkey"
+    @key=rs.clouds.get(filter: [join(["name==",$cloud_name])]).ssh_keys(filter: [join(["resource_uid==",$ssh_key_name])])
+    if empty?(@key)
+        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Did not find SSH key, ", $ssh_key_name, ". So creating it now."])})
+        rs.clouds.get(filter: [join(["name==",$cloud_name])]).ssh_keys().create({"name" : $ssh_key_name})
+    else
+        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["SSH key, ", $ssh_key_name, " already exists."])})
+    end
+  else
+    rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No SSH key is needed for cloud, ", $cloud_name])})
+  end
+end
+
+# Creates a Placement Group if needed.
+define managePlacementGroup($needsPlacementGroup, $cloud_name, @linux_server) return @linux_server do
+  # Create the placement group that will be used (if needed)
+  if $needsPlacementGroup
+    
+    # Dump the hash before doing anything
+    #$my_server_hash = to_object(@linux_server)
+    #rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "server hash before adding pg", detail: to_s($my_server_hash)})
+  
+    # Create a unique placement group name, create it, and then place the href into the server declaration.
+    $pg_name = join(split(uuid(), "-"))[0..23] # unique placement group - global variable for later deletion 
+    
+    # create the placement group ....
+    $cloud_href = rs.clouds.get(filter: [join(["name==",$cloud_name])]).href
+  
+    $placement_group_name=$pg_name
+          
+    $attempts = 0
+    $succeeded = false
+    $pg_href = null
+    while ($attempts < 3) && ($succeeded == false) do
+  
+      @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
+        
+      if empty?(@placement_groups)
+        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Did not find placement group, ", $placement_group_name, ". So creating it now."])})
+        sub on_error: skip do # ignore an error - we'll deal with possibilities later
+          @task=rs.placement_groups.create({"name" : $placement_group_name, "cloud_href" : $cloud_href})
+        end
+        
+      elsif (@placement_groups.state == "available")
+        # all good 
+        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Found placement group, ", $placement_group_name])})
+        $succeeded=true
+        $pg_href = @placement_groups.href # Will use this later
+  
+      else # found a placement group but it's in some funky state, so delete and try again.
+        rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["The placement group ", $placement_group_name, "was not created but is in state, ",@placement_groups.state," So deleting and recreating"])})
+        sub on_error: skip do # ignore error - we'll deal with possibilities later
+          @task=rs.placement_groups.delete({"name" : $placement_group_name, "cloud_href" : $cloud_href})
+        end
+      end  
+      $attempts=$attempts+1
+    end
+        
+    if ($succeeded == false) 
+      # If we get here, I'm going to sleep for 8 more minutes and check one last time since there is sometimes a lag between making the request to create and it existing.
+      sleep(480)
+      @placement_groups=rs.placement_groups.get(filter: [join(["name==",$placement_group_name])])
+      if empty?(@placement_groups)
+        # just forget it - we tried ....
+        raise "Failed to create placement group"
+      end
+      rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Finally. Placement group, ", $placement_group_name, " has been created."])})
+    end
+    
+    # If I get here, then I have a placement group that I need to insert into the server resource declaration.
+    $my_server_hash = to_object(@linux_server)
+    $my_server_hash["fields"]["placement_group_href"] = $pg_href
+      
+    # Dump the hash after the update
+    #rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: "server hash after adding pg", detail: to_s($my_server_hash)})
+  
+    # Copy things back for the later provision ...
+    @linux_server = $my_server_hash
+  
+  else # no placement group needed
+    rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["No placement group is needed for cloud, ", $cloud_name])})
+  end
+end
+
+# Used for retry mechanism
 define handle_retries($attempts) do
   if $attempts < 3
     $_error_behavior = "retry"

@@ -54,7 +54,7 @@ parameter "param_location" do
   description "Cloud to deploy in." 
   # CURRENTLY Azure is not supported by the ServerTemplate used in this CAT and so is not presented as an option at this time.
   # vSphere is only available if POC includes the vSphere add-on
-  allowed_values "AWS", "Google", "VMware" 
+  allowed_values "AWS", "VMware" 
   default "AWS"
 end
 
@@ -83,7 +83,7 @@ mapping "map_cloud" do {
   },
   "Azure" => {   
     "cloud_provider" => "Azure", # provides a standard name for the provider to be used elsewhere in the CAT
-    "cloud" => "Azure Australia East",
+    "cloud" => "Azure West US",
     "zone" => null,
     "instance_type" => "medium",
     "sg" => null, # TEMPORARY UNTIL switch() works for security group - see JIRA SS-1892
