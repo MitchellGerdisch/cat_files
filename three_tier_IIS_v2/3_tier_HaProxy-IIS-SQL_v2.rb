@@ -198,8 +198,7 @@ mapping "map_account" do {
     "restore_db_script_href" => "524831004",
     "create_db_login_script_href" => "524829004",
     "restart_iis_script_href" => "524965004",
-    "lb_image_href" => "/api/multi_cloud_images/377770004"
-
+    "lb_image_href" => "/api/multi_cloud_images/389697004"
   },
   "Hybrid Cloud" => {
     "security_group" => "IIS_3tier_default_SecGrp",
