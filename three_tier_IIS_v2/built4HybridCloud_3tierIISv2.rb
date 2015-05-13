@@ -31,10 +31,10 @@
 #
 # PREREQUISITES:
 #   Imported Server Templates:
-#     Load Balancer with HAProxy (v13.5.5-LTS), revision: 18 
+#     Load Balancer with HAProxy (v13.5.11-LTS), revision: 25
 #     Database Manager for Microsoft SQL Server (13.5.1-LTS)
 #       You need to replace the Powershell library installation rightscript with a new version that sets things up to use TLS.
-#         Import “SYS Install RightScale Powershell library (v13.5.1)” rev 5 or later
+#         Import “SYS Install RightScale Powershell library (v13.5.1-LTS)” rev 5 or later
 #         Import and clone “Database Manager for Microsoft SQL Server (v13.5.1-LTS)”
 #           Replace the existing “SYS Install RightScale Powershell library” script in the Boot Sequence with the later version.
 #         Name the new ServerTemplate: "Database Manager for Microsoft SQL Server (13.5.1-LTS) vTLS"
@@ -48,20 +48,25 @@
 #       Application file on S3 - as per tutorial using the provided DotNetNuke.zip file found here:
 #           http://support.rightscale.com/@api/deki/files/6292/DotNetNuke.zip
 #   SSH Key - see mapping for proper names or to change accordingly.
+#   Placement Group in Azure - see mapping for proper names or change accordingly.
 #   Security Group that is pretty wide open that covers all the VMs - see mapping for name.
-#     ports: 80, 8000, 1433, 3389
+#     ports: 80, 1433, 3389
 #     TODO: Use new security groups resource type to create specific security groups for the tiers.
 #   The usual set of credentials as per the tutorial which are likely already available in the account.
 #     WINDOWS_ADMIN_PASSWORD - Password used by user, Administrator to login to the windows VMs.
 #     SQL_APPLICATION_USER - SQL database user with login privileges to the specified user database.
 #     SQL_APPLICATION_PASSWORD - Password for the SQL database user with login privileges to the specified user database.
 #     DBADMIN_PASSWORD - The password to encrypt the master key when it's created or decrypt it when opening an existing master key.
+#     AWS_ACCESS_KEY 
+#     AWS_ACCOUNT_NUMBER 
+#     AWS_SECRET_ACCESS_KEY
+#   Azure Cloud Configuration
+#     You need to access the Azure console and enable a default placement group. Otherwise the SQL server launch will fail during 
+#     volume creation.
 #
 # DEMO NOTES:
-#   Application Web Page Access in Azure:
-#     You need to look at the port forwarding info for the server in Cloud Management and point your browser to the IP:FORWARDING_PORT selected by Azure.
 #   Scaling:
-#     Operation available to scale out
+#     Operation available to scale out and in
 
 name "IIS-SQL Dev Stack v2"
 rs_ca_ver 20131202
@@ -80,7 +85,8 @@ parameter "param_location" do
   label "Cloud" 
   type "string" 
   description "Cloud to deploy in." 
-  allowed_values "AWS-Australia", "AWS-Brazil", "AWS-Japan", "AWS-USA", "Azure-Netherlands", "Azure-Singapore", "Azure-USA"
+#  allowed_values "AWS-Australia", "AWS-Brazil", "AWS-Japan", "AWS-USA", "Azure-Netherlands", "Azure-Singapore", "Azure-USA"
+  allowed_values "Azure-USA", "AWS-USA", "AWS-Australia", "AWS-Brazil"
   default "AWS-USA"
 end
 
@@ -125,8 +131,8 @@ end
 mapping "map_instance_type" do {
   "AWS" => {
     "low" => "m3.medium",  
-    "medium" => "c3.large", 
-    "high" => "c3.xlarge", 
+    "medium" => "m3.medium", 
+    "high" => "m3.large", 
   },
   "Azure" => {
     "low" => "medium", # 2 CPUs x 3.5GB
@@ -192,8 +198,7 @@ mapping "map_account" do {
     "restore_db_script_href" => "524831004",
     "create_db_login_script_href" => "524829004",
     "restart_iis_script_href" => "524965004",
-    "lb_image_href" => "/api/multi_cloud_images/377770004"
-
+    "lb_image_href" => "/api/multi_cloud_images/389690004"
   },
   "Hybrid Cloud" => {
     "security_group" => "IIS_3tier_default_SecGrp",
@@ -202,7 +207,28 @@ mapping "map_account" do {
     "restore_db_script_href" => "493424003",
     "create_db_login_script_href" => "493420003",
     "restart_iis_script_href" => "527791003",
-    "lb_image_href" => "/api/multi_cloud_images/373975003"
+    "lb_image_href" => "/api/multi_cloud_images/373975003",
+    "placement_group" => "ds1ob0y95a19xw4"
+  },
+  "PIB Alpha" => {  # THIS CAT IN PIB ALPHA NOT WORKING AT THIS TIME
+    "security_group" => "IIS_3tier_default_SecGrp",
+    "ssh_key" => "default",
+    "s3_bucket" => "pib-alpha-bucket",
+    "restore_db_script_href" => "538299003",
+    "create_db_login_script_href" => "538294003",
+    "restart_iis_script_href" => "538326003",
+    "lb_image_href" => "/api/multi_cloud_images/390081003",
+    "placement_group" => "pibalphapg0326"
+  },
+  "PIB Charlie" => {
+    "security_group" => "IIS_3tier_default_SecGrp",
+    "ssh_key" => "default",
+    "s3_bucket" => "pib-charlie-bucket",
+    "restore_db_script_href" => "537973004",
+    "create_db_login_script_href" => "537970004",
+    "restart_iis_script_href" => "537998004",
+    "lb_image_href" => "/api/multi_cloud_images/393678004",
+    "placement_group" => "w3td20by9xw4321"
   },
 }
 end
@@ -249,8 +275,9 @@ resource "lb_1", type: "server" do
   name "Tier 1 - LB 1"
   cloud map( $map_cloud, $param_location, "cloud" )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
-  server_template find("Load Balancer with HAProxy (v13.5.5-LTS)", revision: 18)
+  server_template find("Load Balancer with HAProxy (v13.5.11-LTS)", revision: 25)
   ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
+#usedefault  placement_group switch($inAzure, map($map_account, map($map_current_account, "current_account_name", "current_account"), "placement_group"), null)
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   multi_cloud_image_href switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "lb_image_href"), null)  
   inputs do {
@@ -264,6 +291,7 @@ resource "db_1", type: "server" do
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
   server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS) vTLS")
   ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
+#usedefault  placement_group switch($inAzure, map($map_account, map($map_current_account, "current_account_name", "current_account"), "placement_group"), null)  
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
     inputs do {
       "ADMIN_PASSWORD" => "cred:WINDOWS_ADMIN_PASSWORD",
@@ -293,6 +321,7 @@ resource "server_array_1", type: "server_array" do
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
   server_template find("Microsoft IIS App Server (v13.5.0-LTS)")
   ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
+#usedefault  placement_group switch($inAzure, map($map_account, map($map_current_account, "current_account_name", "current_account"), "placement_group"), null)
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
     "APPLICATION_LISTENER_PORT" => "text:80", # allows the links on the site to work using the default configuraiton.
@@ -528,6 +557,7 @@ define stop_servers(@lb_1, @db_1, @server_array_1, $inAWS) do
   foreach @server in @server_array_1.current_instances() do
     if (@server.state == "operational")
         @server.stop()
+        sleep_until(@server.state == "provisioned")
     end
   end
   
@@ -535,7 +565,7 @@ define stop_servers(@lb_1, @db_1, @server_array_1, $inAWS) do
   @db_1.current_instance().stop()
   
   # Now wait for the instances to be stopped. 
-  sleep_until(@server_array_1.current_instances().state == "provisioned" && @db_1.state == "provisioned" && @lb_1.state == "provisioned")
+  sleep_until(@db_1.state == "provisioned" && @lb_1.state == "provisioned")
 end
 
 define scale_out_array(@server_array_1) do

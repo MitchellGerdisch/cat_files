@@ -557,6 +557,7 @@ define stop_servers(@lb_1, @db_1, @server_array_1, $inAWS) do
   foreach @server in @server_array_1.current_instances() do
     if (@server.state == "operational")
         @server.stop()
+        sleep_until(@server.state == "provisioned")
     end
   end
   
@@ -564,7 +565,7 @@ define stop_servers(@lb_1, @db_1, @server_array_1, $inAWS) do
   @db_1.current_instance().stop()
   
   # Now wait for the instances to be stopped. 
-  sleep_until(@server_array_1.current_instances().state == "provisioned" && @db_1.state == "provisioned" && @lb_1.state == "provisioned")
+  sleep_until(@db_1.state == "provisioned" && @lb_1.state == "provisioned")
 end
 
 define scale_out_array(@server_array_1) do
