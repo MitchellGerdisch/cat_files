@@ -207,7 +207,7 @@ mapping "map_account" do {
     "restore_db_script_href" => "493424003",
     "create_db_login_script_href" => "493420003",
     "restart_iis_script_href" => "527791003",
-    "lb_image_href" => "/api/multi_cloud_images/373975003",
+    "lb_image_href" => "/api/multi_cloud_images/387180003",
     "placement_group" => "ds1ob0y95a19xw4"
   },
   "PIB Alpha" => {  # THIS CAT IN PIB ALPHA NOT WORKING AT THIS TIME
@@ -557,14 +557,14 @@ define stop_servers(@lb_1, @db_1, @server_array_1, $inAWS) do
   foreach @server in @server_array_1.current_instances() do
     if (@server.state == "operational")
         @server.stop()
-        sleep_until(@server.state == "provisioned")
+#        sleep_until(@server.state == "provisioned")
     end
   end
   
   @lb_1.current_instance().stop() 
   @db_1.current_instance().stop()
   
-  # Now wait for the instances to be stopped. 
+  # Now wait for things to be stopped. 
   sleep_until(@db_1.state == "provisioned" && @lb_1.state == "provisioned")
 end
 
