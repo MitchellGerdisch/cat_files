@@ -85,8 +85,8 @@ parameter "param_location" do
   label "Cloud" 
   type "string" 
   description "Cloud to deploy in." 
-#  allowed_values "AWS-Australia", "AWS-Brazil", "AWS-Japan", "AWS-USA", "Azure-Netherlands", "Azure-Singapore", "Azure-USA"
-  allowed_values "Azure-USA", "AWS-USA", "AWS-Australia", "AWS-Brazil"
+  allowed_values "AWS-Australia", "AWS-Brazil", "AWS-Japan", "AWS-USA", "Azure-Netherlands", "Azure-Singapore", "Azure-USA"
+#  allowed_values "Azure-USA", "AWS-USA", "AWS-Australia", "AWS-Brazil"
   default "AWS-USA"
 end
 
