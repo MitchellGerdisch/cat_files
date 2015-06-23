@@ -80,6 +80,8 @@ mapping "map_cloud" do {
     "sg" => null, 
     "mci_name" => "RightImage_CentOS_6.6_x64_v14.2_VMware",
     "mci_rev" => "9",
+#    "mci_name" => "RightImage_CentOS_6.6_x64_v14.2_1_VMware_CIBC_POC",
+#    "mci_rev" => null,
     "ssh_key_href" => '/api/clouds/3145/ssh_keys/AIFVF99O097O1'
   }
 }
@@ -332,7 +334,7 @@ end
 ##########################
 # DEFINITIONS (i.e. RCL) #
 ##########################
-define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_group_rule_http, @sec_group_rule_http8080, @sec_group_rule_mysql, $map_cloud, $map_st, $map_db_creds, $param_location, $line_of_business, $cost_center, $project_code, $needsPlacementGroup, $needsSecurityGroup)  return @lb_server, @app_server, @db_server, $site_link do 
+define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_group_rule_http, @sec_group_rule_http8080, @sec_group_rule_mysql, $map_cloud, $map_st, $map_db_creds, $param_location, $line_of_business, $cost_center, $project_code, $needsPlacementGroup, $needsSecurityGroup, $invSphere)  return @lb_server, @app_server, @db_server, $site_link do 
   
   # Need the cloud name later on
   $cloud_name = map( $map_cloud, $param_location, "cloud" )
@@ -358,7 +360,7 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
       @task=rs.credentials.create({"name":$cred_name, "value": $cred_value})
     end
   end
-
+  
   # Provision the security group rules if applicable. (The security group itself is created when the server is provisioned.)
   if $needsSecurityGroup
     provision(@sec_group_rule_http)
@@ -366,6 +368,17 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
     provision(@sec_group_rule_mysql)
   end
   
+  # Before launching the servers, we need to set the subnet if in vSphere environment.
+  # SoftLayer environment sets default subnets that work fine.
+  # Softlayer has two subnets, but vsphere only has one.  
+  # vsphere is set in the source from the map.
+  if $invSphere
+    $subnet_hrefs = ["/api/clouds/3145/subnets/594LFJRGPJ5E9"]
+    call manageSubnets(@lb_server, $subnet_hrefs) retrieve @lb_server
+    call manageSubnets(@app_server, $subnet_hrefs) retrieve @app_server
+    call manageSubnets(@db_server, $subnet_hrefs) retrieve @db_server
+  end
+ 
   # Launch the servers concurrently
   concurrent return  @lb_server, @app_server, @db_server do 
     provision(@lb_server)
@@ -390,15 +403,22 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
   # Now tell the LB to find the app server
   call run_recipe_inputs(@lb_server, "rs-haproxy::frontend", {})
     
-  # If deployed in Azure one needs to provide the port mapping that Azure uses.
+  # Depending on the environment, the link provided back to the user needs to be tweaked
+  # assume public IP
+  $ip_address = @lb_server.current_instance().public_ip_addresses[0]
+  if  $invSphere
+    # Use private IP address
+    $ip_address = @lb_server.current_instance().private_ip_addresses[0]
+  end
+  
+  # Now if in Azure need to get the port mapping.
   if $inAzure
      @bindings = rs.clouds.get(href: @lb_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @lb_server.current_instance().href])
      @binding = select(@bindings, {"private_port":80})
-     $site_link = join(["http://", to_s(@lb_server.current_instance().public_ip_addresses[0]), ":", @binding.public_port, "/dbread"])
+     $site_link = join(["http://", to_s($ip_address), ":", @binding.public_port, "/dbread"])
   else
-     $site_link = join(["http://", to_s(@lb_server.current_instance().public_ip_addresses[0]), "/dbread"])
+    $site_link = join(["http://", to_s($ip_address), "/dbread"])
   end
-    
 end 
 
 # Terminate the servers
@@ -461,6 +481,13 @@ define checkCloudSupport($cloud_name, $param_location) do
   if logic_not(contains?($supportedClouds, [$cloud_name]))
     raise "Your trial account does not support the "+$param_location+" cloud. Contact RightScale for more information on how to enable access to that cloud."
   end
+end
+
+# Modifies subnet hrefs in the server hash
+define manageSubnets(@server, $subnet_href_array) return @server do
+  $definition_hash = to_object(@server)
+  $definition_hash["fields"]["subnet_hrefs"] = $subnet_hrefs
+  @server = $definition_hash
 end
 
 # Creates a Placement Group if needed.
