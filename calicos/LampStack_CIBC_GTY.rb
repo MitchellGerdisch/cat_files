@@ -15,13 +15,47 @@ parameter "param_location" do
   default "SoftLayer"
 end
 
+parameter "server_performance" do
+  type "string"
+  label "Server Performance Level"
+  category "Resource pool"
+  allowed_values "High", "Medium", "Low"
+  default "Medium"
+  #description "Server Performance Level"
+end
+
+parameter "cost_center" do
+  type "string"
+  label "Cost Center"
+  category "Business"
+  allowed_values "CC a","CC b","CC c","CC d","CC e"
+  #description "Cost Center"
+end
+
+parameter "line_of_business" do
+  type "string"
+  label "Line of Business"
+  category "Business"
+  allowed_values "LOB 1","LOB 2","LOB 3","LOB 4","LOB 5"
+  #description "Line of Business"
+end
+
+parameter "project_code" do
+  type "string"
+  label "Project Code"
+  category "Business"
+  default "abcd1234"
+  #description "Eight digit project code"
+end
+
+
 ################################
 # Outputs returned to the user #
 ################################
 output "site_url" do
-  label "Web Site URL"
+  label "LAMP Stack Test"
   category "Output"
-  description "Click to see your web site."
+  description "Click to test the stack."
 end
 
 ##############
@@ -34,16 +68,18 @@ mapping "map_cloud" do {
     "cloud_provider" => "SoftLayer", # provides a standard name for the provider to be used elsewhere in the CAT
     "cloud" => "SoftLayer",
     "zone" => "Toronto 1", # We don't care which az AWS decides to use.
-    "instance_type" => "gMedium",
     "sg" => null, 
+    "mci_name" => "RightImage_RHEL_6.6._v14.0_SoftLayer",
+    "mci_rev" => "1",
     "ssh_key_href" => '/api/clouds/1869/ssh_keys/65DV7UQAFV7RB',
   },
   "VMware" => {
     "cloud_provider" => "vSphere", # provides a standard name for the provider to be used elsewhere in the CAT
     "cloud" => "CIBC_POC",
     "zone" => "RightScale POC", # launches in vSphere require a zone being specified  
-    "instance_type" => "large",
     "sg" => null, 
+    "mci_name" => "RightImage_CentOS_6.6_x64_v14.2_VMware",
+    "mci_rev" => "9",
     "ssh_key_href" => '/api/clouds/3145/ssh_keys/AIFVF99O097O1'
   }
 }
@@ -79,6 +115,21 @@ mapping "map_db_creds" do {
   }
 } end
 
+mapping "instance_type_mapping" do {
+    "High" => {
+      "SoftLayer"=>"gLarge",
+      "vSphere"=>"large"
+    },
+    "Medium" => {
+      "SoftLayer"=>"gMedium",
+      "vSphere"=>"large"
+    },
+    "Low" => {
+      "SoftLayer"=>"gSmall",
+      "vSphere"=>"small"
+    },
+  }
+end
 
 ##################
 # CONDITIONS     #
@@ -163,10 +214,11 @@ resource 'lb_server', type: 'server' do
   name 'Load Balancer'
   cloud map( $map_cloud, $param_location, "cloud" )
   datacenter map($map_cloud, $param_location, "zone")
-  instance_type map($map_cloud, $param_location, "instance_type")
+  instance_type map($instance_type_mapping, $server_performance, map($map_cloud, $param_location, "cloud_provider"))
   ssh_key_href map($map_cloud, $param_location, "ssh_key_href")
   security_group_hrefs map($map_cloud, $param_location, "sg") 
   server_template find(map($map_st, "lb", "name"), revision: map($map_st, "lb", "rev"))
+  multi_cloud_image find(map($map_cloud, $param_location, "mci_name"), revision: map($map_cloud, $param_location, "mci_rev"))
   inputs do {
     'ephemeral_lvm/logical_volume_name' => 'text:ephemeral0',
     'ephemeral_lvm/logical_volume_size' => 'text:100%VG',
@@ -191,10 +243,11 @@ resource 'db_server', type: 'server' do
   name 'Database Server'
   cloud map( $map_cloud, $param_location, "cloud" )
   datacenter map($map_cloud, $param_location, "zone")
-  instance_type map($map_cloud, $param_location, "instance_type")
+  instance_type map($instance_type_mapping, $server_performance, map($map_cloud, $param_location, "cloud_provider"))
   ssh_key_href map($map_cloud, $param_location, "ssh_key_href")
   security_group_hrefs map($map_cloud, $param_location, "sg") 
   server_template find(map($map_st, "db", "name"), revision: map($map_st, "db", "rev"))
+  multi_cloud_image find(map($map_cloud, $param_location, "mci_name"), revision: map($map_cloud, $param_location, "mci_rev"))
   inputs do {
     'ephemeral_lvm/logical_volume_name' => 'text:ephemeral0',
     'ephemeral_lvm/logical_volume_size' => 'text:100%VG',
@@ -233,10 +286,11 @@ resource 'app_server', type: 'server' do
   name 'App Server'
   cloud map( $map_cloud, $param_location, "cloud" )
   datacenter map($map_cloud, $param_location, "zone")
-  instance_type map($map_cloud, $param_location, "instance_type")
+  instance_type map($instance_type_mapping, $server_performance, map($map_cloud, $param_location, "cloud_provider"))
   ssh_key_href map($map_cloud, $param_location, "ssh_key_href")
   security_group_hrefs map($map_cloud, $param_location, "sg") 
   server_template find(map($map_st, "app", "name"), revision: map($map_st, "app", "rev"))
+  multi_cloud_image find(map($map_cloud, $param_location, "mci_name"), revision: map($map_cloud, $param_location, "mci_rev"))
   inputs do {
     'ephemeral_lvm/logical_volume_name' => 'text:ephemeral0',
     'ephemeral_lvm/logical_volume_size' => 'text:100%VG',
@@ -278,7 +332,7 @@ end
 ##########################
 # DEFINITIONS (i.e. RCL) #
 ##########################
-define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_group_rule_http, @sec_group_rule_http8080, @sec_group_rule_mysql, $map_cloud, $map_st, $map_db_creds, $param_location, $needsPlacementGroup, $needsSecurityGroup)  return @lb_server, @app_server, @db_server, $site_link do 
+define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_group_rule_http, @sec_group_rule_http8080, @sec_group_rule_mysql, $map_cloud, $map_st, $map_db_creds, $param_location, $line_of_business, $cost_center, $project_code, $needsPlacementGroup, $needsSecurityGroup)  return @lb_server, @app_server, @db_server, $site_link do 
   
   # Need the cloud name later on
   $cloud_name = map( $map_cloud, $param_location, "cloud" )
@@ -312,30 +366,29 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
     provision(@sec_group_rule_mysql)
   end
   
-  
   # Launch the servers concurrently
-#  concurrent return  @lb_server, @app_server, @db_server do 
+  concurrent return  @lb_server, @app_server, @db_server do 
     provision(@lb_server)
-#    provision(@app_server)
-#    provision(@db_server)
-#  end 
+    provision(@app_server)
+    provision(@db_server)
+  end 
+  
+  #Add business-related tags to the servers
+  $tags=[join(["cibc:line_of_business=",$line_of_business]),
+    join(["cibc:cost_center=",$cost_center]),
+    join(["cibc:project_code=",$project_code])]
+  rs.tags.multi_add(resource_hrefs: @@deployment.servers().current_instance().href[], tags: $tags)
   
   # Run some post-launch scripts to get things working together
-  
-  # Enable monitoring for server-specific application software
-#  call run_recipe_inputs(@lb_server, "rs-haproxy::collectd", {})
-#  call run_recipe_inputs(@app_server, "rs-application_php::collectd", {})  
-#  call run_recipe_inputs(@db_server, "rs-mysql::collectd", {})   
+  # Import a test database
+  call run_recipe_inputs(@db_server, "rs-mysql::dump_import", {})  # applicable inputs were set at launch
     
-#  # Imoprt a test database
-#  call run_recipe_inputs(@db_server, "rs-mysql::dump_import", {})  # applicable inputs were set at launch
-#    
-#  # Set up the tags for the load balancer and app servers to find each other.
-#  call run_recipe_inputs(@lb_server, "rs-haproxy::tags", {})
-#  call run_recipe_inputs(@app_server, "rs-application_php::tags", {})  
-#    
-#  # Now tell the LB to find the app server
-#  call run_recipe_inputs(@lb_server, "rs-haproxy::frontend", {})
+  # Set up the tags for the load balancer and app servers to find each other.
+  call run_recipe_inputs(@lb_server, "rs-haproxy::tags", {})
+  call run_recipe_inputs(@app_server, "rs-application_php::tags", {})  
+    
+  # Now tell the LB to find the app server
+  call run_recipe_inputs(@lb_server, "rs-haproxy::frontend", {})
     
   # If deployed in Azure one needs to provide the port mapping that Azure uses.
   if $inAzure
@@ -348,7 +401,7 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
     
 end 
 
-# Terminate the server
+# Terminate the servers
 define terminate_server(@lb_server, @app_server, @db_server, @sec_group, $map_cloud, $param_location, $needsSecurityGroup, $needsPlacementGroup) do
     
     $cloud_name = map( $map_cloud, $param_location, "cloud" )
@@ -363,9 +416,11 @@ define terminate_server(@lb_server, @app_server, @db_server, @sec_group, $map_cl
     end
     
     # Terminate the servers
-    delete(@lb_server)
-#    delete(@app_server)
-#    delete(@db_server)
+    concurrent do 
+      delete(@lb_server)
+      delete(@app_server)
+      delete(@db_server)
+    end
 
     if $needsSecurityGroup
       rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Deleting security group, ", @sec_group])})
