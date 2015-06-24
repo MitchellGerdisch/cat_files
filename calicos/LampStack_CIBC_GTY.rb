@@ -12,8 +12,8 @@ name 'LAMP Stack'
 rs_ca_ver 20131202
 short_description "![logo](http://nextstone.ca/nextstone.ca/nextstone/images/stories/lamp_logo.png)
 
-Launches a 3-tier LAMP stack."
-long_description "Launches a 3-tier LAMP stack."
+Launches a multi-tier LAMP stack."
+long_description "Launches a multi-tier LAMP stack."
 ##################
 # User inputs    #
 ##################
