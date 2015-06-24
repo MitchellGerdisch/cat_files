@@ -68,6 +68,13 @@ output "site_url" do
   description "Click to test the stack."
 end
 
+output "vmware_note" do
+  condition $invSphere
+  label "Deployment Note"
+  category "Output"
+  default_value "Your CloudApp was deployed in a VMware environment on a private network and so is not directly accessible."
+end
+
 ##############
 # MAPPINGS   #
 ##############
@@ -320,10 +327,10 @@ resource 'app_server', type: 'server' do
     'rs-application_php/database/password' => 'cred:CAT_MYSQL_APP_PASSWORD',
     'rs-application_php/database/schema' => 'text:app_test',
     'rs-application_php/database/user' => 'cred:CAT_MYSQL_APP_USERNAME',
-    'rs-application_php/listen_port' => 'text:8080',
+    'rs-application_php/listen_port' => 'text:80',
     'rs-application_php/scm/repository' => 'text:git://github.com/rightscale/examples.git',
     'rs-application_php/scm/revision' => 'text:unified_php',
-    'rs-application_php/vhost_path' => 'text:/dbread',
+    'rs-application_php/vhost_path' => 'text:/',
     'rs-base/ntp/servers' => 'array:["text:time.rightscale.com","text:ec2-us-east.time.rightscale.com","text:ec2-us-west.time.rightscale.com"]',
     'rs-base/swap/size' => 'text:1',
     "DBAPPLICATION_USER" => "cred:CAT_MYSQL_APP_USERNAME",
@@ -416,28 +423,14 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
   rs.tags.multi_add(resource_hrefs: @@deployment.servers().current_instance().href[], tags: $tags)
   
   # Run some post-launch scripts to get things working together
-  # NOTE: The following script calls logic makes a destinction between the vSphere env and SoftLayer but really the vSphere logic is a common
-  # denominator and could be used for both environments.
-  # Import a test database
-  if $invSphere
-    # Call RightScript that imports attached database file
-    call run_script(@db_server,  "/api/right_scripts/543136003")
-  else
-    # Do it with the original recipe
-    call run_recipe_inputs(@db_server, "rs-mysql::dump_import", {})  # applicable inputs were set at launch
-  end
+  # Call RightScript that imports attached database file
+  call run_script(@db_server,  "/api/right_scripts/543136003")
   
   # Configure App server
-  if $invSphere
-    # Use RightScripts to set up the app server
-    call run_script(@app_server,  "/api/right_scripts/542635003") # apache install
-    call run_script(@app_server,  "/api/right_scripts/542634003") # php install
-    call run_script(@app_server,  "/api/right_scripts/542623003") # php db connection config
-    call run_script(@app_server,  "/api/right_scripts/543139003") # php db reader app install
-  else
-    # Use original recipe
-    call run_recipe_inputs(@app_server, "rs-application_php::default", {})  # applicable inputs were set at launch
-  end
+  call run_script(@app_server,  "/api/right_scripts/542635003") # apache install
+  call run_script(@app_server,  "/api/right_scripts/542634003") # php install
+  call run_script(@app_server,  "/api/right_scripts/542623003") # php db connection config
+  call run_script(@app_server,  "/api/right_scripts/543139003") # php db reader app install
 
     
   # Set up the tags for the load balancer and app servers to find each other - if applicable
@@ -452,14 +445,13 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
     
   # Depending on the environment, the link provided back to the user needs to be tweaked
   if  $invSphere
-    # Use private IP address of app_server in VMware since no LB is used in VMware env current.
-    # and no /dbread at the end of the link
+    # Use private IP address (of app_server) in VMware
     $ip_address = @app_server.current_instance().private_ip_addresses[0]
-    $site_link = join(["http://", to_s($ip_address)])
   else
     $ip_address = @lb_server.current_instance().public_ip_addresses[0]
-    $site_link = join(["http://", to_s($ip_address), "/dbread"])
   end
+  $site_link = join(["http://", to_s($ip_address)])
+    
 end 
 
 # Terminate the servers
