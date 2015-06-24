@@ -157,6 +157,10 @@ condition "invSphere" do
   equals?(map($map_cloud, $param_location, "cloud_provider"), "vSphere")
 end
 
+condition "notInvSphere" do
+  logic_not($invSphere)
+end
+
 condition "inAzure" do
   equals?(map($map_cloud, $param_location, "cloud_provider"), "Azure")
 end
@@ -221,8 +225,8 @@ end
 
 ### Server Declarations ###
 resource 'lb_server', type: 'server' do
-  condition logic_not($invSphere) # currently not supporting the LB in VMware env.
   name 'Load Balancer'
+#  condition $notInvSphere # currently not supporting the LB in VMware env.
   cloud map( $map_cloud, $param_location, "cloud" )
   datacenter map($map_cloud, $param_location, "zone")
   instance_type map($instance_type_mapping, $server_performance, map($map_cloud, $param_location, "cloud_provider"))
@@ -322,6 +326,11 @@ resource 'app_server', type: 'server' do
     'rs-application_php/vhost_path' => 'text:/dbread',
     'rs-base/ntp/servers' => 'array:["text:time.rightscale.com","text:ec2-us-east.time.rightscale.com","text:ec2-us-west.time.rightscale.com"]',
     'rs-base/swap/size' => 'text:1',
+    "DBAPPLICATION_USER" => "cred:CAT_MYSQL_APP_USERNAME",
+    "DBAPPLICATION_PASSWORD" => "cred:CAT_MYSQL_APP_PASSWORD",
+    "DB_SCHEMA_NAME" => "text:app_test",
+    "MASTER_DB_DNSNAME" => "env:Database Server:PRIVATE_IP",
+    "APPLICATION" => "text:",
   } end
 end
 
@@ -412,7 +421,7 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
   # Import a test database
   if $invSphere
     # Call RightScript that imports attached database file
-    call multi_run_script(@db_server,  "/api/right_scripts/543136003")
+    call run_script(@db_server,  "/api/right_scripts/543136003")
   else
     # Do it with the original recipe
     call run_recipe_inputs(@db_server, "rs-mysql::dump_import", {})  # applicable inputs were set at launch
@@ -421,10 +430,10 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
   # Configure App server
   if $invSphere
     # Use RightScripts to set up the app server
-    call multi_run_script(@app_server,  "/api/right_scripts/542635003") # apache install
-    call multi_run_script(@app_server,  "/api/right_scripts/542634003") # php install
-    call multi_run_script(@app_server,  "/api/right_scripts/542623003") # php db connection config
-    call multi_run_script(@app_server,  "/api/right_scripts/543139003") # php db reader app install
+    call run_script(@app_server,  "/api/right_scripts/542635003") # apache install
+    call run_script(@app_server,  "/api/right_scripts/542634003") # php install
+    call run_script(@app_server,  "/api/right_scripts/542623003") # php db connection config
+    call run_script(@app_server,  "/api/right_scripts/543139003") # php db reader app install
   else
     # Use original recipe
     call run_recipe_inputs(@app_server, "rs-application_php::default", {})  # applicable inputs were set at launch
@@ -443,8 +452,9 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
     
   # Depending on the environment, the link provided back to the user needs to be tweaked
   if  $invSphere
-    # Use private IP address and no /dbread at the end of the link
-    $ip_address = @lb_server.current_instance().private_ip_addresses[0]
+    # Use private IP address of app_server in VMware since no LB is used in VMware env current.
+    # and no /dbread at the end of the link
+    $ip_address = @app_server.current_instance().private_ip_addresses[0]
     $site_link = join(["http://", to_s($ip_address)])
   else
     $ip_address = @lb_server.current_instance().public_ip_addresses[0]
@@ -623,4 +633,12 @@ define run_recipe_inputs(@target, $recipe_name, $recipe_inputs) do
   end
 end
 
-
+# Helper definition, runs a script on given server, waits until script completes or fails
+# Raises an error in case of failure
+define run_script(@target, $right_script_href) do
+  @task = @target.current_instance().run_executable(right_script_href: $right_script_href, inputs: {})
+  sleep_until(@task.summary =~ "^(completed|failed)")
+  if @task.summary =~ "failed"
+    raise "Failed to run " + $right_script_href
+  end
+end
