@@ -1,3 +1,13 @@
+#
+# Multi-tier stack that can be launched in the CIBC SoftLayer and VMware environment
+# 
+# NOTES:
+#   This CAT started life as a PIB CAT and so has logic in it that is not applicable to the CIBC environments.
+#   Due to outbound connectivity restrictions in the VMware environment to sites like github, special scripts had to be used to configure
+#   certain aspects of the stack. 
+#   Also currently, the LB server is not supported in the VMware environment due to time constraints.
+#   
+
 name 'LAMP Stack'
 rs_ca_ver 20131202
 short_description "![logo](http://nextstone.ca/nextstone.ca/nextstone/images/stories/lamp_logo.png)
@@ -94,12 +104,12 @@ mapping "map_st" do {
     "rev" => "1",
   },
   "app" => {
-    "name" => "PHP App Server (v14.1.1) CIBC POC",
-    "rev" => "1",
+    "name" => "PHP App Server (v14.1.1) CIBC GTY",
+    "rev" => "2",
   },
   "db" => {
-    "name" => "Database Manager for MySQL (v14.1.1) CIBC POC",
-    "rev" => "1",
+    "name" => "Database Manager for MySQL (v14.1.1) CIBC GTY",
+    "rev" => "2",
   }
 } end
 
@@ -213,6 +223,7 @@ end
 
 ### Server Declarations ###
 resource 'lb_server', type: 'server' do
+  condition logic_not($invSphere) # currently not supporting the LB in VMware env.
   name 'Load Balancer'
   cloud map( $map_cloud, $param_location, "cloud" )
   datacenter map($map_cloud, $param_location, "zone")
@@ -281,6 +292,7 @@ resource 'db_server', type: 'server' do
     'rs-mysql/import/dump_file' => 'text:app_test.sql',
     'rs-mysql/import/repository' => 'text:git://github.com/rightscale/examples.git',
     'rs-mysql/import/revision' => 'text:unified_php',
+    "MYSQLROOTPASSWORD" => "cred:CAT_MYSQL_ROOT_PASSWORD",
   } end
 end
 
@@ -346,7 +358,9 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
   
   # Create a placement group if needed and update the server declaration to use it
   call createPlacementGroup($needsPlacementGroup, $cloud_name) retrieve $pg_name
-  call managePlacementGroup($needsPlacementGroup, $cloud_name, @lb_server, $pg_name) retrieve @lb_server
+  if logic_not($invSphere)
+    call managePlacementGroup($needsPlacementGroup, $cloud_name, @lb_server, $pg_name) retrieve @lb_server
+  end
   call managePlacementGroup($needsPlacementGroup, $cloud_name, @app_server, $pg_name) retrieve @app_server
   call managePlacementGroup($needsPlacementGroup, $cloud_name, @db_server, $pg_name) retrieve @db_server
   
@@ -374,14 +388,16 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
   # vsphere is set in the source from the map.
   if $invSphere
     $subnet_hrefs = ["/api/clouds/3145/subnets/594LFJRGPJ5E9"]
-    call manageSubnets(@lb_server, $subnet_hrefs) retrieve @lb_server
+    # Currently not supporting LB in vSphere: call manageSubnets(@lb_server, $subnet_hrefs) retrieve @lb_server
     call manageSubnets(@app_server, $subnet_hrefs) retrieve @app_server
     call manageSubnets(@db_server, $subnet_hrefs) retrieve @db_server
   end
  
   # Launch the servers concurrently
   concurrent return  @lb_server, @app_server, @db_server do 
-    provision(@lb_server)
+    if logic_not($invSphere) 
+      provision(@lb_server)
+    end
     provision(@app_server)
     provision(@db_server)
   end 
@@ -393,43 +409,60 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
   rs.tags.multi_add(resource_hrefs: @@deployment.servers().current_instance().href[], tags: $tags)
   
   # Run some post-launch scripts to get things working together
+  # NOTE: The following script calls logic makes a destinction between the vSphere env and SoftLayer but really the vSphere logic is a common
+  # denominator and could be used for both environments.
   # Import a test database
-  call run_recipe_inputs(@db_server, "rs-mysql::dump_import", {})  # applicable inputs were set at launch
-    
-  # Set up the tags for the load balancer and app servers to find each other.
-  call run_recipe_inputs(@lb_server, "rs-haproxy::tags", {})
-  call run_recipe_inputs(@app_server, "rs-application_php::tags", {})  
-    
-  # Now tell the LB to find the app server
-  call run_recipe_inputs(@lb_server, "rs-haproxy::frontend", {})
-    
-  # Depending on the environment, the link provided back to the user needs to be tweaked
-  # assume public IP
-  $ip_address = @lb_server.current_instance().public_ip_addresses[0]
-  if  $invSphere
-    # Use private IP address
-    $ip_address = @lb_server.current_instance().private_ip_addresses[0]
+  if $invSphere
+    # Call RightScript that imports attached database file
+    call multi_run_script(@db_server,  "/api/right_scripts/543136003")
+  else
+    # Do it with the original recipe
+    call run_recipe_inputs(@db_server, "rs-mysql::dump_import", {})  # applicable inputs were set at launch
   end
   
-  # Now if in Azure need to get the port mapping.
-  if $inAzure
-     @bindings = rs.clouds.get(href: @lb_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @lb_server.current_instance().href])
-     @binding = select(@bindings, {"private_port":80})
-     $site_link = join(["http://", to_s($ip_address), ":", @binding.public_port, "/dbread"])
+  # Configure App server
+  if $invSphere
+    # Use RightScripts to set up the app server
+    call multi_run_script(@app_server,  "/api/right_scripts/542635003") # apache install
+    call multi_run_script(@app_server,  "/api/right_scripts/542634003") # php install
+    call multi_run_script(@app_server,  "/api/right_scripts/542623003") # php db connection config
+    call multi_run_script(@app_server,  "/api/right_scripts/543139003") # php db reader app install
   else
+    # Use original recipe
+    call run_recipe_inputs(@app_server, "rs-application_php::default", {})  # applicable inputs were set at launch
+  end
+
+    
+  # Set up the tags for the load balancer and app servers to find each other - if applicable
+  # Current no LB is launched when using the VMware environment.
+  if logic_not($invSphere)
+    call run_recipe_inputs(@lb_server, "rs-haproxy::tags", {})
+    call run_recipe_inputs(@app_server, "rs-application_php::tags", {})  
+    # Now tell the LB to find the app server
+    call run_recipe_inputs(@lb_server, "rs-haproxy::frontend", {})
+  end
+
+    
+  # Depending on the environment, the link provided back to the user needs to be tweaked
+  if  $invSphere
+    # Use private IP address and no /dbread at the end of the link
+    $ip_address = @lb_server.current_instance().private_ip_addresses[0]
+    $site_link = join(["http://", to_s($ip_address)])
+  else
+    $ip_address = @lb_server.current_instance().public_ip_addresses[0]
     $site_link = join(["http://", to_s($ip_address), "/dbread"])
   end
 end 
 
 # Terminate the servers
-define terminate_server(@lb_server, @app_server, @db_server, @sec_group, $map_cloud, $param_location, $needsSecurityGroup, $needsPlacementGroup) do
+define terminate_server(@lb_server, @app_server, @db_server, @sec_group, $map_cloud, $param_location, $needsSecurityGroup, $needsPlacementGroup, $invSphere) do
     
     $cloud_name = map( $map_cloud, $param_location, "cloud" )
 
     # find the placement group before deleting the server and then delete the PG once the server is gone
     if $needsPlacementGroup 
       sub on_error: skip do  # if might throw an error if we are stopped and there's nothing existing at this point.
-        @pg_res = @lb_server.current_instance().placement_group()
+        @pg_res = @db_server.current_instance().placement_group()
         $$pg_name = @pg_res.name
         rs.audit_entries.create(audit_entry: {auditee_href: @@deployment.href, summary: join(["Placement group associated with the server: ", $$pg_name])})
       end
@@ -437,7 +470,9 @@ define terminate_server(@lb_server, @app_server, @db_server, @sec_group, $map_cl
     
     # Terminate the servers
     concurrent do 
-      delete(@lb_server)
+      if logic_not($invSphere)
+        delete(@lb_server)
+      end
       delete(@app_server)
       delete(@db_server)
     end
