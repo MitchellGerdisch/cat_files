@@ -90,8 +90,6 @@ mapping "map_cloud" do {
     "sg" => null, 
     "mci_name" => "RightImage_CentOS_6.6_x64_v14.2_VMware",
     "mci_rev" => "9",
-#    "mci_name" => "RightImage_CentOS_6.6_x64_v14.2_1_VMware_CIBC_POC",
-#    "mci_rev" => null,
     "ssh_key_href" => '/api/clouds/3145/ssh_keys/AIFVF99O097O1'
   }
 }
