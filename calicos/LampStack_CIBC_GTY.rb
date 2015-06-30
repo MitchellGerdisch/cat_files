@@ -117,7 +117,7 @@ mapping "map_st" do {
   },
   "app" => {
     "name" => "PHP App Server (v14.1.1) CIBC GTY",
-    "rev" => "4",
+    "rev" => "5",
   },
   "db" => {
     "name" => "Database Manager for MySQL (v14.1.1) CIBC GTY",
@@ -397,15 +397,10 @@ end
 ##########################
 # DEFINITIONS (i.e. RCL) #
 ##########################
-define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_group_rule_http, @sec_group_rule_http8080, @sec_group_rule_mysql, $map_cloud, $map_st, $map_db_creds, $param_location, $line_of_business, $cost_center, $project_code, $needsPlacementGroup, $needsSecurityGroup, $invSphere, $notInvSphere)  return @lb_server, @app_server, @db_server, $site_link do 
+define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_group_rule_http, @sec_group_rule_http8080, @sec_group_rule_mysql, $map_cloud, $map_st, $map_db_creds, $param_location, $line_of_business, $cost_center, $project_code, $needsPlacementGroup, $needsSecurityGroup, $invSphere, $notInvSphere)  return @lb_server, @app_server, @db_server, $site_link, $lb_status do 
   
   # Need the cloud name later on
   $cloud_name = map( $map_cloud, $param_location, "cloud" )
-  
-  # Put the business tag info into global variables to be used during scaling requests
-  $$lob = $line_of_business
-  $$cc = $cost_center
-  $$pc = $project_code
 
   # Check if the selected cloud is supported in this account.
   # Since different PIB scenarios include different clouds, this check is needed.
@@ -542,7 +537,7 @@ define terminate_server(@lb_server, @app_server, @db_server, @sec_group, $map_cl
 end
 
 # Scale out (add) server
-define scale_out_array(@app_server, @lb_server) do
+define scale_out_array(@app_server, @lb_server, $line_of_business, $cost_center, $project_code) do
   task_label("Scale out application server.")
   @task = @app_server.launch(inputs: {})
   sleep(60)
