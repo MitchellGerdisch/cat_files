@@ -8,7 +8,7 @@
 #   Also currently, the LB server is not supported in the VMware environment due to time constraints.
 #   
 
-name 'LAMP Stack'
+name 'LAMP Stack - Scalable'
 rs_ca_ver 20131202
 short_description "![logo](http://nextstone.ca/nextstone.ca/nextstone/images/stories/lamp_logo.png)
 
@@ -68,6 +68,13 @@ output "site_url" do
   description "Click to test the stack."
 end
 
+output "lb_status_url" do
+  condition $notInvSphere
+  label "Load Balancer Status Page" 
+  category "Output"
+  description "Accesses Load Balancer status page"
+end
+
 output "vmware_note" do
   condition $invSphere
   label "Deployment Note"
@@ -110,7 +117,7 @@ mapping "map_st" do {
   },
   "app" => {
     "name" => "PHP App Server (v14.1.1) CIBC GTY",
-    "rev" => "2",
+    "rev" => "4",
   },
   "db" => {
     "name" => "Database Manager for MySQL (v14.1.1) CIBC GTY",
@@ -165,7 +172,8 @@ condition "invSphere" do
 end
 
 condition "notInvSphere" do
-  logic_not($invSphere)
+  equals?("true","true") # temporarily overriding for some testing
+#  logic_not($invSphere)
 end
 
 condition "inAzure" do
@@ -233,7 +241,6 @@ end
 ### Server Declarations ###
 resource 'lb_server', type: 'server' do
   name 'Load Balancer'
-#  condition $notInvSphere # currently not supporting the LB in VMware env.
   cloud map( $map_cloud, $param_location, "cloud" )
   datacenter map($map_cloud, $param_location, "zone")
   instance_type map($instance_type_mapping, $server_performance, map($map_cloud, $param_location, "cloud_provider"))
@@ -305,7 +312,7 @@ resource 'db_server', type: 'server' do
   } end
 end
 
-resource 'app_server', type: 'server' do
+resource 'app_server', type: 'server_array' do
   name 'App Server'
   cloud map( $map_cloud, $param_location, "cloud" )
   datacenter map($map_cloud, $param_location, "zone")
@@ -339,6 +346,23 @@ resource 'app_server', type: 'server' do
     "MASTER_DB_DNSNAME" => "env:Database Server:PRIVATE_IP",
     "APPLICATION" => "text:",
   } end
+  state "enabled"
+  array_type "alert"
+  elasticity_params do {
+    "bounds" => {
+      "min_count"            => 1,
+      "max_count"            => 4
+    },
+    "pacing" => {
+      "resize_calm_time"     => 5, 
+      "resize_down_by"       => 1,
+      "resize_up_by"         => 1
+    },
+    "alert_specific_params" => {
+      "decision_threshold"   => 51,
+      "voters_tag_predicate" => "APP_LAMP_GTY"
+    }
+  } end
 end
 
 ####################
@@ -349,6 +373,7 @@ operation 'launch' do
   definition 'generated_launch' 
   output_mappings do {
     $site_url => $site_link,
+    $lb_status_url => $lb_status,
   } end
 end 
 
@@ -357,13 +382,30 @@ operation "terminate" do
   definition "terminate_server"
 end
 
+operation "Scale Out" do
+  description "Adds (scales out) an app server."
+#  condition $notInvSphere
+  definition "scale_out_array"
+end
+
+operation "Scale In" do
+  description "Scales in an app server."
+#  condition $notInvSphere
+  definition "scale_in_array"
+end
+
 ##########################
 # DEFINITIONS (i.e. RCL) #
 ##########################
-define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_group_rule_http, @sec_group_rule_http8080, @sec_group_rule_mysql, $map_cloud, $map_st, $map_db_creds, $param_location, $line_of_business, $cost_center, $project_code, $needsPlacementGroup, $needsSecurityGroup, $invSphere)  return @lb_server, @app_server, @db_server, $site_link do 
+define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_group_rule_http, @sec_group_rule_http8080, @sec_group_rule_mysql, $map_cloud, $map_st, $map_db_creds, $param_location, $line_of_business, $cost_center, $project_code, $needsPlacementGroup, $needsSecurityGroup, $invSphere, $notInvSphere)  return @lb_server, @app_server, @db_server, $site_link do 
   
   # Need the cloud name later on
   $cloud_name = map( $map_cloud, $param_location, "cloud" )
+  
+  # Put the business tag info into global variables to be used during scaling requests
+  $$lob = $line_of_business
+  $$cc = $cost_center
+  $$pc = $project_code
 
   # Check if the selected cloud is supported in this account.
   # Since different PIB scenarios include different clouds, this check is needed.
@@ -409,7 +451,7 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
  
   # Launch the servers concurrently
   concurrent return  @lb_server, @app_server, @db_server do 
-    if logic_not($invSphere) 
+    if $notInvSphere 
       provision(@lb_server)
     end
     provision(@app_server)
@@ -421,27 +463,22 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
     join(["cibc:cost_center=",$cost_center]),
     join(["cibc:project_code=",$project_code])]
   rs.tags.multi_add(resource_hrefs: @@deployment.servers().current_instance().href[], tags: $tags)
+  rs.tags.multi_add(resource_hrefs: @@deployment.server_arrays().current_instances().href[], tags: $tags)
+
   
   # Run some post-launch scripts to get things working together
   # Call RightScript that imports attached database file
   call run_script(@db_server,  "/api/right_scripts/543136003")
-  
-  # Configure App server
-  call run_script(@app_server,  "/api/right_scripts/542635003") # apache install
-  call run_script(@app_server,  "/api/right_scripts/542634003") # php install
-  call run_script(@app_server,  "/api/right_scripts/542623003") # php db connection config
-  call run_script(@app_server,  "/api/right_scripts/543139003") # php db reader app install
-
     
   # Set up the tags for the load balancer and app servers to find each other - if applicable
   # Current no LB is launched when using the VMware environment.
-  if logic_not($invSphere)
+  if $notInvSphere
+    call multi_run_recipe_inputs(@app_server, "rs-application_php::tags", {}) 
     call run_recipe_inputs(@lb_server, "rs-haproxy::tags", {})
-    call run_recipe_inputs(@app_server, "rs-application_php::tags", {})  
     # Now tell the LB to find the app server
+    sleep(15) # wait to give the server array instances  a chance to get tagged.
     call run_recipe_inputs(@lb_server, "rs-haproxy::frontend", {})
   end
-
     
   # Depending on the environment, the link provided back to the user needs to be tweaked
   if  $invSphere
@@ -451,11 +488,12 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
     $ip_address = @lb_server.current_instance().public_ip_addresses[0]
   end
   $site_link = join(["http://", to_s($ip_address)])
+  $lb_status = join(["http://", to_s($ip_address), "/haproxy-status"])
     
 end 
 
 # Terminate the servers
-define terminate_server(@lb_server, @app_server, @db_server, @sec_group, $map_cloud, $param_location, $needsSecurityGroup, $needsPlacementGroup, $invSphere) do
+define terminate_server(@lb_server, @app_server, @db_server, @sec_group, $map_cloud, $param_location, $needsSecurityGroup, $needsPlacementGroup, $invSphere, $notInvSphere) do
     
     $cloud_name = map( $map_cloud, $param_location, "cloud" )
 
@@ -470,7 +508,7 @@ define terminate_server(@lb_server, @app_server, @db_server, @sec_group, $map_cl
     
     # Terminate the servers
     concurrent do 
-      if logic_not($invSphere)
+      if $notInvSphere
         delete(@lb_server)
       end
       delete(@app_server)
@@ -501,6 +539,54 @@ define terminate_server(@lb_server, @app_server, @db_server, @sec_group, $map_cl
        end
     end
   
+end
+
+# Scale out (add) server
+define scale_out_array(@app_server, @lb_server) do
+  task_label("Scale out application server.")
+  @task = @app_server.launch(inputs: {})
+  sleep(60)
+  # Wait until the new server is up and running. 
+  foreach @server in @app_server.current_instances() do
+    if ((@server.state == "pending") || (@server.state == "booting") || (@server.state == "queued"))
+      sleep_until(@server.state == "operational")
+    end
+  end
+  
+  # Tag the app server(s) with the business tags
+  $tags=[join(["cibc:line_of_business=",$$lob]),
+    join(["cibc:cost_center=",$$cc]),
+    join(["cibc:project_code=",$$pc])]
+  rs.tags.multi_add(resource_hrefs: @app_server.current_instances().href[], tags: $tags)
+    
+  # Tag the servers for Load Balancing
+  call multi_run_recipe_inputs(@app_server, "rs-application_php::tags", {}) 
+  # Now tell the LB to find the app server
+  call run_recipe_inputs(@lb_server, "rs-haproxy::frontend", {})
+end
+
+# Scale in (remove) server
+define scale_in_array(@app_server) do
+  task_label("Scale in application server.")
+  $found_terminatable_server = false
+  
+  foreach @server in @app_server.current_instances() do
+    if (!$found_terminatable_server) && (@server.state == "operational" || @server.state == "stranded")
+      rs.audit_entries.create(audit_entry: {auditee_href: @server.href, summary: "Scale In: terminating server, " + @server.href + " which is in state, " + @server.state})
+      
+      # Detach the instance from the load balancer
+      call run_recipe_inputs(@server, "rs-application_php::application_backend_detached", {})
+      
+      # destroy the instance
+      @server.terminate()
+      sleep_until(@server.state != "operational")
+      $found_terminatable_server = true
+    end
+  end
+  
+  if (!$found_terminatable_server)
+    rs.audit_entries.create(audit_entry: {auditee_href: @app_server.href, summary: "Scale In: No terminatable server currently found in the server array"})
+  end
 end
 
 ####################
@@ -625,10 +711,28 @@ define run_recipe_inputs(@target, $recipe_name, $recipe_inputs) do
   end
 end
 
+define multi_run_recipe_inputs(@target, $recipe_name, $recipe_inputs) do
+  @task = @target.multi_run_executable(recipe_name: $recipe_name, inputs: $recipe_inputs)
+  sleep_until(@task.summary =~ "^(completed|failed)")
+  if @task.summary =~ "failed"
+    raise "Failed to run " + $recipe_name
+  end
+end
+
 # Helper definition, runs a script on given server, waits until script completes or fails
 # Raises an error in case of failure
 define run_script(@target, $right_script_href) do
   @task = @target.current_instance().run_executable(right_script_href: $right_script_href, inputs: {})
+  sleep_until(@task.summary =~ "^(completed|failed)")
+  if @task.summary =~ "failed"
+    raise "Failed to run " + $right_script_href
+  end
+end
+
+# Helper definition, runs a script on given server array, waits until script completes or fails
+# Raises an error in case of failure
+define multi_run_script(@target, $right_script_href) do
+  @task = @target.multi_run_executable(right_script_href: $right_script_href, inputs: {})
   sleep_until(@task.summary =~ "^(completed|failed)")
   if @task.summary =~ "failed"
     raise "Failed to run " + $right_script_href
