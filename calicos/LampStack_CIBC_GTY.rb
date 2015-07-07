@@ -2,10 +2,11 @@
 # Multi-tier stack that can be launched in the CIBC SoftLayer and VMware environment
 # 
 # NOTES:
-#   This CAT started life as a PIB CAT and so has logic in it that is not applicable to the CIBC environments.
-#   Due to outbound connectivity restrictions in the VMware environment to sites like github, special scripts had to be used to configure
-#   certain aspects of the stack. 
-#   Also currently, the LB server is not supported in the VMware environment due to time constraints.
+#   This CAT uses minimally modified off-the-shelf ServerTemplates.
+#   The VMware environment's firewall rules prohibit access to some of the data sources used by these ServerTemplates.
+#   Where feasible this was addressed by modifying the ServerTemplate to use RightScripts with attachments
+#   However, the Load Balancer ServerTemplate was not able to be modified in this way thus far and so in the VMware environment,
+#   there is no load balancer or scaling supported.
 #   
 
 name 'LAMP Stack'
@@ -59,6 +60,13 @@ output "site_url" do
   label "LAMP Stack Test"
   category "Output"
   description "Click to test the stack."
+end
+
+output "lb_status_url" do
+  condition $notInvSphere
+  label "Load Balancer Status Page" 
+  category "Output"
+  description "Accesses Load Balancer status page"
 end
 
 output "vmware_note" do
@@ -342,6 +350,7 @@ operation 'launch' do
   definition 'generated_launch' 
   output_mappings do {
     $site_url => $site_link,
+    $lb_status_url => $lb_status,
   } end
 end 
 
@@ -365,7 +374,7 @@ end
 ##########################
 # DEFINITIONS (i.e. RCL) #
 ##########################
-define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_group_rule_http, @sec_group_rule_http8080, @sec_group_rule_mysql, $map_cloud, $map_st, $map_db_creds, $param_location, $transit_id, $map_id, $needsPlacementGroup, $needsSecurityGroup, $invSphere)  return @lb_server, @app_server, @db_server, $site_link do 
+define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_group_rule_http, @sec_group_rule_http8080, @sec_group_rule_mysql, $map_cloud, $map_st, $map_db_creds, $param_location, $transit_id, $map_id, $needsPlacementGroup, $needsSecurityGroup, $invSphere) return @lb_server, @app_server, @db_server, $site_link, $lb_status do 
   
   # Need the cloud name later on
   $cloud_name = map( $map_cloud, $param_location, "cloud" )
@@ -455,7 +464,7 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
     $ip_address = @lb_server.current_instance().public_ip_addresses[0]
   end
   $site_link = join(["http://", to_s($ip_address)])
-    
+  $lb_status = join(["http://", to_s($ip_address), "/haproxy-status"]) 
 end 
 
 # Terminate the servers
