@@ -34,28 +34,21 @@ parameter "server_performance" do
   #description "Server Performance Level"
 end
 
-parameter "cost_center" do
+parameter "transit_id" do
   type "string"
-  label "Cost Center"
+  label "Transit ID"
   category "Business"
-  allowed_values "CC a","CC b","CC c","CC d","CC e"
+  default "70762"
+  allowed_values "70762", "76236", "76234", "78115"
   #description "Cost Center"
 end
 
-parameter "line_of_business" do
+parameter "map_id" do
   type "string"
-  label "Line of Business"
+  label "MAP ID"
   category "Business"
-  allowed_values "LOB 1","LOB 2","LOB 3","LOB 4","LOB 5"
-  #description "Line of Business"
-end
-
-parameter "project_code" do
-  type "string"
-  label "Project Code"
-  category "Business"
-  default "abcd1234"
-  #description "Eight digit project code"
+  default "WL-5-b"
+  description "LAMP workload project"
 end
 
 
@@ -357,10 +350,22 @@ operation "terminate" do
   definition "terminate_server"
 end
 
+operation "Scale Out" do
+  description "Adds (scales out) an app server."
+  condition $notInvSphere
+  definition "scale_out_array"
+end
+
+operation "Scale In" do
+  description "Scales in an app server."
+  condition $notInvSphere
+  definition "scale_in_array"
+end
+
 ##########################
 # DEFINITIONS (i.e. RCL) #
 ##########################
-define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_group_rule_http, @sec_group_rule_http8080, @sec_group_rule_mysql, $map_cloud, $map_st, $map_db_creds, $param_location, $line_of_business, $cost_center, $project_code, $needsPlacementGroup, $needsSecurityGroup, $invSphere)  return @lb_server, @app_server, @db_server, $site_link do 
+define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_group_rule_http, @sec_group_rule_http8080, @sec_group_rule_mysql, $map_cloud, $map_st, $map_db_creds, $param_location, $transit_id, $map_id, $needsPlacementGroup, $needsSecurityGroup, $invSphere)  return @lb_server, @app_server, @db_server, $site_link do 
   
   # Need the cloud name later on
   $cloud_name = map( $map_cloud, $param_location, "cloud" )
@@ -417,9 +422,8 @@ define generated_launch(@lb_server, @app_server, @db_server, @sec_group, @sec_gr
   end 
   
   #Add business-related tags to the servers
-  $tags=[join(["cibc:line_of_business=",$line_of_business]),
-    join(["cibc:cost_center=",$cost_center]),
-    join(["cibc:project_code=",$project_code])]
+  $tags=[join(["cibc:transit_id=",$transit_id]),
+    join(["cibc:map_id=",$map_id])]
   rs.tags.multi_add(resource_hrefs: @@deployment.servers().current_instance().href[], tags: $tags)
   
   # Run some post-launch scripts to get things working together
@@ -500,7 +504,53 @@ define terminate_server(@lb_server, @app_server, @db_server, @sec_group, $map_cl
          end
        end
     end
+end
+
+# Scale out (add) server
+define scale_out_array(@app_server, @lb_server, $transit_id, $map_id) do
+  task_label("Scale out application server.")
+  @task = @app_server.launch(inputs: {})
+  sleep(60)
+  # Wait until the new server is up and running. 
+  foreach @server in @app_server.current_instances() do
+    if ((@server.state == "pending") || (@server.state == "booting") || (@server.state == "queued"))
+      sleep_until(@server.state == "operational")
+    end
+  end
   
+  # Tag the app server(s) with the business tags
+  $tags=[join(["cibc:transit_id=",$transit_id]),
+      join(["cibc:map_id=",$map_id])]
+  rs.tags.multi_add(resource_hrefs: @app_server.current_instances().href[], tags: $tags)
+    
+  # Tag the servers for Load Balancing
+  call multi_run_recipe_inputs(@app_server, "rs-application_php::tags", {}) 
+  # Now tell the LB to find the app server
+  call run_recipe_inputs(@lb_server, "rs-haproxy::frontend", {})
+end
+
+# Scale in (remove) server
+define scale_in_array(@app_server) do
+  task_label("Scale in application server.")
+  $found_terminatable_server = false
+  
+  foreach @server in @app_server.current_instances() do
+    if (!$found_terminatable_server) && (@server.state == "operational" || @server.state == "stranded")
+      rs.audit_entries.create(audit_entry: {auditee_href: @server.href, summary: "Scale In: terminating server, " + @server.href + " which is in state, " + @server.state})
+      
+      # Detach the instance from the load balancer
+      call run_recipe_inputs(@server, "rs-application_php::application_backend_detached", {})
+      
+      # destroy the instance
+      @server.terminate()
+      sleep_until(@server.state != "operational")
+      $found_terminatable_server = true
+    end
+  end
+  
+  if (!$found_terminatable_server)
+    rs.audit_entries.create(audit_entry: {auditee_href: @app_server.href, summary: "Scale In: No terminatable server currently found in the server array"})
+  end
 end
 
 ####################
