@@ -21,7 +21,7 @@ parameter "param_location" do
   category "Deployment Options"
   label "Cloud" 
   type "string" 
-  allowed_values "SoftLayer", "VMware" 
+  allowed_values "SoftLayer" # Can't get a LB to launch in VMware: , "VMware" 
   default "SoftLayer"
 end
 
@@ -384,13 +384,13 @@ end
 
 operation "Scale Out" do
   description "Adds (scales out) an app server."
-#  condition $notInvSphere
+  condition $notInvSphere
   definition "scale_out_array"
 end
 
 operation "Scale In" do
   description "Scales in an app server."
-#  condition $notInvSphere
+  condition $notInvSphere
   definition "scale_in_array"
 end
 
