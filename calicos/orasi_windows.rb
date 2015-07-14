@@ -1,4 +1,4 @@
-name "Windows Servers"
+name "Order Up Some Windows Servers"
 rs_ca_ver 20131202
 short_description "
 Deploys 1 or more Windows Servers in Azure.
@@ -94,7 +94,7 @@ mapping "map_mci" do {
 #generate outputs
 [*1..10].each do |n|
   output "server_ip_#{n}" do
-    label "Server #{n} IP"
+    label "Server #{n} RDP Address"
     category "General"
     description "IP for the Server"
   end
@@ -105,7 +105,7 @@ resource "windows_servers", type: "server_array" do
   name "Windows Servers"
   cloud $cloud
   instance_type "medium" 
-  placement_group "rightscaledemopg"
+  placement_group "rightscaledemoorasi2"
   multi_cloud_image find(map($map_mci, $param_servertype, "mci"))
   # NOTE: No placement group field is provided here. Instead placement groups are handled in the launch definition below.
   server_template find('Base ServerTemplate for Windows (v13.5.0-LTS)', revision: 3)
@@ -123,7 +123,7 @@ resource "windows_servers", type: "server_array" do
       "max_count"            => $num_servers
     },
     "pacing" => {
-      "resize_calm_time"     => 5, 
+      "resize_calm_time"     => 1, 
       "resize_down_by"       => 1,
       "resize_up_by"         => 1
     },
@@ -160,16 +160,19 @@ define create_servers(@windows_servers, $param_password) return @windows_servers
   # Create the Admin Password credential used for the server based on the user-entered password.
   $credname = join(["CAT_WINDOWS_ADMIN_PASSWORD-",@@deployment.href])
   @task=rs.credentials.create({"name":$credname, "value": $param_password})
-
+ 
   provision(@windows_servers)
+  @windows_servers.update(server_array: { state: "enabled"})
 
   # Get the RDP bind ports
-  $bindings_array = []
+  $bindings_array = []  # This will be an array of single-element arrays since that's what the output mapping code expects.
   foreach @windows_server in @windows_servers.current_instances() do
     @bindings = rs.clouds.get(href: @windows_server.cloud().href).ip_address_bindings(filter: ["instance_href==" + @windows_server.href])
     @binding = select(@bindings, {"private_port":3389})
     $binding_public_port = @binding.public_port
-    $bindings_array << join([to_s(@windows_server.public_ip_addresses[0]), ":", $binding_public_port])
+    $binding_array = []
+    $binding_array << join([to_s(@windows_server.public_ip_addresses[0]), ":", $binding_public_port])
+    $bindings_array << $binding_array
   end
   
   $server_ips = $bindings_array
@@ -184,6 +187,7 @@ define terminate_servers(@windows_servers) do
   @cred.destroy()
   
   # Terminate the server
+  @windows_servers.update(server_array: { state: "disabled"})
   delete(@windows_servers)
 end
 
