@@ -63,6 +63,22 @@
     />
   </target>
 	
+  <target name="PibIndigo">
+    <property name="target.file" location="./built4PibIndigo_3tierIISv2.rb" />
+    <delete file="${target.file}"/>
+    <concat destfile="${target.file}">
+        <fileset dir="${source.dir}"
+            includes="${source.files}" />
+        <fileset dir="${include.dir}"
+            includes="*" />
+    </concat>
+    <replaceregexp file="${target.file}"
+        match="__ACCOUNT_NAME__"
+        replace="PIB Indigo" 
+        flags="g"
+    />
+  </target>
+	
   <target name="Sandbox">
     <property name="target.file" location="./built4CseSandbox_3tierIISv2.rb" />
   	<delete file="${target.file}"/>
