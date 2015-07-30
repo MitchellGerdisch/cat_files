@@ -138,6 +138,20 @@ operation "launch" do
   } end
 end
 
+operation "start" do
+  description "Start the servers"
+  definition "start_servers"
+  output_mappings do {
+    $output_fe_ip => $frontend_ip,
+    $output_be_ip => $backend_ip,
+  } end
+end
+
+operation "stop" do
+  description "Stop the servers"
+  definition "stop_servers"
+end
+
 ##########################
 # DEFINITIONS (i.e. RCL) #
 ##########################
@@ -171,6 +185,31 @@ define launch_servers(@frontend, @backend, @ssh_key, @sec_group, @sec_group_rule
 
   $frontend_ip = to_s(@frontend.current_instance().public_ip_addresses[0])
   $backend_ip = to_s(@backend.current_instance().public_ip_addresses[0])
+end 
+
+define start_servers(@frontend, @backend, @ssh_key, @sec_group, @sec_group_rule_ssh)  return @frontend, @backend, @sec_group, @ssh_key, $frontend_ip, $backend_ip do 
+    
+  # Launch the servers concurrently
+  concurrent return  @frontend, @backend do 
+    @frontend.current_instance().start() 
+    @backend.current_instance().start() 
+    sleep_until(@frontend.state == "operational" || @frontend.state == "stranded")
+    sleep_until(@backend.state == "operational" || @backend.state == "stranded")
+  end
+
+  $frontend_ip = to_s(@frontend.current_instance().public_ip_addresses[0])
+  $backend_ip = to_s(@backend.current_instance().public_ip_addresses[0])
+end 
+
+define stop_servers(@frontend, @backend) do 
+    
+  # Stop the servers concurrently
+  concurrent return  @frontend, @backend do 
+    @frontend.current_instance().stop() 
+    @backend.current_instance().stop() 
+    sleep_until(@frontend.state == "provisioned" && @backend.state == "provisioned")
+  end
+
 end 
 
 
