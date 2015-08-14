@@ -542,16 +542,17 @@ define start_servers(@lb_1, @db_1, @server_array_1, $inAWS, $inAzure, $map_curre
     
   # Now wait until the Application tier is good to go.
   sleep_until(@server_array_1.current_instances().state == "operational" || @server_array_1.current_instances().state == "stranded")
-  if (@server_array_1.current_instances().state == "operational")
-    task_label("Restarting IIS so it can connect to DB.")
-    call multi_run_script(@server_array_1,  join(["/api/right_scripts/", $restart_iis_script]))
-  else
+  if (@server_array_1.current_instances().state != "operational")
     raise "Server array instance(s) stranded"
   end
   
   # Now that everything is happy, re-enable the server array
   @server_array_1.update(server_array: { state: "enabled"})
     
+  # And give IIS a kick so it connects to the DB.
+  task_label("Restarting IIS so it can connect to DB.")
+  call multi_run_script(@server_array_1,  join(["/api/right_scripts/", $restart_iis_script]))
+
   # Return the new LB's IP address
   $lb_1_public_ip_address = @lb_1.current_instance().public_ip_addresses[0]
   

@@ -50,7 +50,7 @@
 #   SSH Key - see mapping for proper names or to change accordingly.
 #   Placement Group in Azure - see mapping for proper names or change accordingly.
 #   Security Group that is pretty wide open that covers all the VMs - see mapping for name.
-#     ports: 80, 1433, 3389
+#     ports: 80, 1433, 3389 (3389 is optional - only needed for debugging)
 #     TODO: Use new security groups resource type to create specific security groups for the tiers.
 #   The usual set of credentials as per the tutorial which are likely already available in the account.
 #     WINDOWS_ADMIN_PASSWORD - Password used by user, Administrator to login to the windows VMs.
@@ -229,6 +229,15 @@ mapping "map_account" do {
     "restart_iis_script_href" => "537998004",
     "lb_image_href" => "/api/multi_cloud_images/393678004",
     "placement_group" => "w3td20by9xw4321"
+  },
+  "PIB Indigo" => {
+    "security_group" => "IIS_3tier_default_SecGrp",
+    "ssh_key" => "default",
+    "s3_bucket" => "pib-indigo-bucket",
+    "restore_db_script_href" => "544753003",
+    "create_db_login_script_href" => "544751003",
+    "restart_iis_script_href" => "544784003",
+    "lb_image_href" => "/api/multi_cloud_images/396812003",
   },
 }
 end
@@ -533,16 +542,17 @@ define start_servers(@lb_1, @db_1, @server_array_1, $inAWS, $inAzure, $map_curre
     
   # Now wait until the Application tier is good to go.
   sleep_until(@server_array_1.current_instances().state == "operational" || @server_array_1.current_instances().state == "stranded")
-  if (@server_array_1.current_instances().state == "operational")
-    task_label("Restarting IIS so it can connect to DB.")
-    call multi_run_script(@server_array_1,  join(["/api/right_scripts/", $restart_iis_script]))
-  else
+  if (@server_array_1.current_instances().state != "operational")
     raise "Server array instance(s) stranded"
   end
   
   # Now that everything is happy, re-enable the server array
   @server_array_1.update(server_array: { state: "enabled"})
     
+  # And give IIS a kick so it connects to the DB.
+  task_label("Restarting IIS so it can connect to DB.")
+  call multi_run_script(@server_array_1,  join(["/api/right_scripts/", $restart_iis_script]))
+
   # Return the new LB's IP address
   $lb_1_public_ip_address = @lb_1.current_instance().public_ip_addresses[0]
   
