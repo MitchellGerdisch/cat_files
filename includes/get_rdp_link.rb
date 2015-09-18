@@ -3,10 +3,10 @@
 # RDP file just like in Cloud Management.
 #
 # The API 1.6 call requires knowing the shard and account number.
-# Therefore at this time, those values have to be passed into the routine which likely means they
-# are hard-coded in the CAT.
-# If someone finds logic to get those values for a given instance of a running CAT, then that logic
-# should be added to this routine and the parameters removed.
+# The account number has to be hard-coded since I have not found a way to deduce it from within a CAT.
+# The shard can be found using the "find_shard.rb" definition colocated with this file.
+# Although it's a rather kludgey approach.
+# If someone finds better logic to get those values for a given instance of a running CAT, please let me know.
 define get_rdp_link(@windows_server, $shard, $account_number) return $rdp_link do
 
   $rs_endpoint = "https://us-"+$shard+".rightscale.com"
