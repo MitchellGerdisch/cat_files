@@ -293,8 +293,9 @@ define pre_auto_launch(@vpc_network, @vpc_subnet, @vpc_igw, @vpc_route_table, @v
       provision(@vpc_route_table)    
     end
     
-    concurrent return @vpc_route, @sec_group_rule_ssh, @ssh_key do
+    concurrent return @vpc_route, @sec_group, @sec_group_rule_ssh, @ssh_key do
       provision(@vpc_route)
+      provision(@sec_group)
       provision(@sec_group_rule_ssh)
       provision(@ssh_key)
     end
