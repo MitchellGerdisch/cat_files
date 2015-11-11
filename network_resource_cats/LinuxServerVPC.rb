@@ -303,7 +303,7 @@ define pre_auto_launch(@vpc_network, @vpc_subnet, @vpc_igw, @vpc_route_table, @v
     @vpc_network.update(network: {route_table_href: to_s(@vpc_route_table.href)})
     
     # provision the server
-#    provision(@linux_server)
+    provision(@linux_server)
     
 end
 
