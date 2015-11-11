@@ -267,7 +267,6 @@ end
 
 # Import and set up what is needed for the server and then launch it.
 define pre_auto_launch(@vpc_network, @vpc_subnet, @vpc_igw, @vpc_route_table, @vpc_route, @linux_server, @sec_group, @sec_group_rule_ssh, @ssh_key, $map_cloud, $map_st) return @vpc_network, @vpc_subnet, @vpc_igw, @vpc_route_table, @vpc_route, @linux_server, @sec_group, @sec_group_rule_ssh, @ssh_key do
-  
 
     # Need the cloud name later on
     $cloud_name = map( $map_cloud, "AWS", "cloud" )
