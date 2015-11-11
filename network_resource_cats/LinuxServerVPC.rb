@@ -295,7 +295,8 @@ define pre_auto_launch(@vpc_network, @vpc_subnet, @vpc_igw, @vpc_route_table, @v
     
     concurrent return @vpc_route, @sec_group, @sec_group_rule_ssh, @ssh_key do
       provision(@vpc_route)
-      provision(@sec_group)
+      # The provision of the rule will automatically provision the group so it needs to be returned outside 
+      # of this concurrent operation but not explicitly provisioned.
       provision(@sec_group_rule_ssh)
       provision(@ssh_key)
     end
