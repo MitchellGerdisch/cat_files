@@ -76,33 +76,6 @@ mapping "map_cloud" do {
     "ssh_key" => "@ssh_key",
     "pg" => null,
     "mci_mapping" => "Public",
-  },
-  "Azure" => {   
-    "cloud" => "Azure East US",
-    "zone" => null,
-    "instance_type" => "medium",
-    "sg" => null, 
-    "ssh_key" => null,
-    "pg" => "@placement_group",
-    "mci_mapping" => "Public",
-  },
-  "Google" => {
-    "cloud" => "Google",
-    "zone" => "us-central1-c", # launches in Google require a zone
-    "instance_type" => "n1-standard-2",
-    "sg" => '@sec_group',  
-    "ssh_key" => null,
-    "pg" => null,
-    "mci_mapping" => "Public",
-  },
-  "VMware" => {
-    "cloud" => "POC vSphere",
-    "zone" => "POC-vSphere-Zone-1", # launches in vSphere require a zone being specified  
-    "instance_type" => "large",
-    "sg" => null, 
-    "ssh_key" => "@ssh_key",
-    "pg" => null,
-    "mci_mapping" => "VMware",
   }
 }
 end
@@ -110,15 +83,9 @@ end
 mapping "map_instancetype" do {
   "standard performance" => {
     "AWS" => "m3.medium",
-    "Azure" => "medium",
-    "Google" => "n1-standard-1",
-    "VMware" => "small",
   },
   "high performance" => {
     "AWS" => "m3.large",
-    "Azure" => "large",
-    "Google" => "n1-standard-2",
-    "VMware" => "large",
   }
 } end
 
@@ -130,12 +97,6 @@ mapping "map_st" do {
 } end
 
 mapping "map_mci" do {
-  "VMware" => { # vSphere 
-    "CentOS_mci" => "RightImage_CentOS_6.6_x64_v14.2_VMware",
-    "CentOS_mci_rev" => "9",
-    "Ubuntu_mci" => "RightImage_Ubuntu_14.04_x64_v14.2_VMware",
-    "Ubuntu_mci_rev" => "7"
-  },
   "Public" => { # all other clouds
     "CentOS_mci" => "RightImage_CentOS_6.6_x64_v14.2",
     "CentOS_mci_rev" => "24",
@@ -178,9 +139,12 @@ resource "vpc_route_table", type: "route_table" do
   network @vpc_network
 end
 
+# This route is needed to allow the server to be able to talk back to RightScale.
+# For a production environment you would probably want to limit the outbound route to just RightScale CIDRs and required ports.
+# But for a demo CAT, this is fine. :)
 resource "vpc_route", type: "route" do
   name join(["cat_internet_route_", last(split(@@deployment.href,"/"))])
-  destination_cidr_block "0.0.0.0/0"
+  destination_cidr_block "0.0.0.0/0" 
   next_hop_network_gateway @vpc_igw
   route_table @vpc_route_table
 end
@@ -248,7 +212,6 @@ end
 operation "launch" do 
   description "Launch the server"
   definition "pre_auto_launch"
-
 end
 
 operation "enable" do
@@ -259,6 +222,11 @@ operation "enable" do
   output_mappings do {
     $ssh_link => $server_ip_address,
   } end
+end
+
+operation "terminate" do 
+  description "Clean up"
+  definition "terminate"
 end
 
 ##########################
@@ -310,16 +278,44 @@ end
 
 define enable(@linux_server) return $server_ip_address do
     
-    while equals?(@linux_server.current_instance().public_ip_addresses[0], null) do
-      sleep(10)
-    end
-    $server_addr =  @linux_server.current_instance().public_ip_addresses[0]
+  # In a real VPC scenario, I would likely not even let a public IP address be assigned and I would likely 
+  # use the private IP address for access.
+  # But for ease of demo purposes, I'll use the public IP.
+  while equals?(@linux_server.current_instance().public_ip_addresses[0], null) do
+    sleep(10)
+  end
+  $server_addr =  @linux_server.current_instance().public_ip_addresses[0]
 
-    # Create the SSH download link like that in CM
-    call find_shard(@@deployment) retrieve $shard_number
-    call find_account_number() retrieve $account_number
-    call get_server_access_link(@linux_server, "SSH", $shard_number, $account_number) retrieve $server_ip_address
+  # Create the SSH download link like that in CM
+  call find_shard(@@deployment) retrieve $shard_number
+  call find_account_number() retrieve $account_number
+  call get_server_access_link(@linux_server, "SSH", $shard_number, $account_number) retrieve $server_ip_address
 end 
+
+define terminate(@vpc_network, @vpc_subnet, @vpc_igw, @vpc_route_table, @vpc_route, @linux_server, @sec_group, @sec_group_rule_ssh, @ssh_key) do
+  
+  # destroy the server
+  delete(@linux_server)
+  
+  # switch back in the default route table so that auto-terminate doesn't hit a dependency issue when cleaning up.
+  # Another approach would have been to not create and associate a new route table but instead find the default route table
+  # and add the outbound 0.0.0.0/0 route to it.
+  
+  @other_route_table = @vpc_route_table #  initializing the variable
+  # Find the route tables associated with our network. 
+  # There should be two: the one we created above and the default one that is created for new networks.
+  @route_tables=rs.route_tables.get(filter: [join(["network_href==",to_s(@vpc_network.href)])])
+  foreach @route_table in @route_tables do
+    if @route_table.href != @vpc_route_table.href
+      # We found the default route table
+      @other_route_table = @route_table
+    end
+  end
+  # Update the network to use the default route table 
+  @vpc_network.update(network: {route_table_href: to_s(@other_route_table.href)})
+  
+  # The rest of the resources will be cleaned up by auto-terminate
+end
 
 # Checks if the account supports the selected cloud
 define checkCloudSupport($cloud_name) do
@@ -443,7 +439,7 @@ define find_shard(@deployment) return $shard_number do
       foreach $character in split($word, "") do
         if $character =~ /[0-9]/
           $shard_number = $character
-          rs.audit_entries.create(notify: "None", audit_entry: { auditee_href: @@deployment, summary: join(["found shard:",$character]) , detail: ""}) 
+#          rs.audit_entries.create(notify: "None", audit_entry: { auditee_href: @@deployment, summary: join(["found shard:",$character]) , detail: ""}) 
         end
       end
     end
