@@ -92,56 +92,44 @@ end
 # RESOURCE DEFINITIONS     #
 ############################
 
-#### Server Definition ###
-#resource "linux_server", type: "server" do
-#  name 'Linux Server'
-#  cloud map($map_cloud, $param_location, "cloud")
-#  datacenter map($map_cloud, $param_location, "zone")
-#  instance_type map($map_instancetype, $param_instancetype, $param_location)
-#  ssh_key_href map($map_cloud, $param_location, "ssh_key")
-#  placement_group_href map($map_cloud, $param_location, "pg")
-#  security_group_hrefs map($map_cloud, $param_location, "sg")  
-#  server_template_href find(map($map_st, "linux_server", "name"), revision: map($map_st, "linux_server", "rev"))
-#  multi_cloud_image_href find(map($map_mci, map($map_cloud, $param_location, "mci_mapping"), join([$param_servertype, "_mci"])), revision: map($map_mci, map($map_cloud, $param_location, "mci_mapping"), join([$param_servertype, "_mci_rev"])))
-#  inputs do {
-#    "SECURITY_UPDATES" => "text:enable" # Enable security updates
-#  } end
-#end
-#
-#### Security Group Definitions ###
-## Note: Even though not all environments need or use security groups, the launch operation/definition will decide whether or not
-## to provision the security group and rules.
-#resource "sec_group", type: "security_group" do
-#  condition $needsSecurityGroup
-#
-#  name join(["LinuxServerSecGrp-",@@deployment.href])
-#  description "Linux Server security group."
-#  cloud map( $map_cloud, $param_location, "cloud" )
-#end
-#
-#resource "sec_group_rule_ssh", type: "security_group_rule" do
-#  condition $needsSecurityGroup
-#
-#  name "Linux server SSH Rule"
-#  description "Allow SSH access."
-#  source_type "cidr_ips"
-#  security_group @sec_group
-#  protocol "tcp"
-#  direction "ingress"
-#  cidr_ips "0.0.0.0/0"
-#  protocol_details do {
-#    "start_port" => "22",
-#    "end_port" => "22"
-#  } end
-#end
-#
-#### SSH Key ###
-#resource "ssh_key", type: "ssh_key" do
-#  condition $needsSshKey
-#
-#  name join(["sshkey_", last(split(@@deployment.href,"/"))])
-#  cloud map($map_cloud, $param_location, "cloud")
-#end
+### Server Definition ###
+resource "linux_server", type: "server" do
+  name 'Linux Server'
+  ssh_key_href @ssh_key
+  security_group_hrefs @sec_group
+  server_template_href find(map($map_st, "linux_server", "name"), revision: map($map_st, "linux_server", "rev"))
+  multi_cloud_image_href find(map($map_mci, "Public", "Ubuntu_mci"), revision: map($map_mci, "Public", "Ubuntu_mci_rev"))
+  inputs do {
+    "SECURITY_UPDATES" => "text:enable" # Enable security updates
+  } end
+end
+
+### Security Group Definitions ###
+# Note: Even though not all environments need or use security groups, the launch operation/definition will decide whether or not
+# to provision the security group and rules.
+resource "sec_group", type: "security_group" do
+  name join(["sg_", last(split(@@deployment.href,"/"))])
+  description "Linux Server security group."
+end
+
+resource "sec_group_rule_ssh", type: "security_group_rule" do
+  name "Linux server SSH Rule"
+  description "Allow SSH access."
+  source_type "cidr_ips"
+  security_group @sec_group
+  protocol "tcp"
+  direction "ingress"
+  cidr_ips "0.0.0.0/0"
+  protocol_details do {
+    "start_port" => "22",
+    "end_port" => "22"
+  } end
+end
+
+### SSH Key ###
+resource "ssh_key", type: "ssh_key" do
+  name join(["sshkey_", last(split(@@deployment.href,"/"))])
+end
 
 ##################
 # Permissions    #
@@ -169,14 +157,11 @@ end
 ##########################
 # DEFINITIONS (i.e. RCL) #
 ##########################
-#define launch_servers(@linux_server, @ssh_key, @sec_group, @sec_group_rule_ssh, $map_cloud, $map_st, $map_mci, $param_cpu, $param_ram)  return @linux_server, @sec_group, @ssh_key, $param_location,  $cheapest_cloud, $cheapest_instance_type, $app_cost, $aws_cloud, $aws_instance_type, $aws_instance_price, $google_cloud, $google_instance_type, $google_instance_price, $azure_cloud, $azure_instance_type, $azure_instance_price, $vmware_cloud, $vmware_instance_type, $vmware_instance_price do 
-define launch_servers() return $chosen_region_name, $chosen_datacenter_name, $chosen_instance_type_name, $number_res_instances, $number_running_instances do
+define launch_servers(@linux_server, @ssh_key, @sec_group, @sec_group_rule_ssh, $map_st) return @linux_server, @sec_group, @ssh_key, $chosen_region_name, $chosen_datacenter_name, $chosen_instance_type_name, $number_res_instances, $number_running_instances do
 
   # Find and import the server template - just in case it hasn't been imported to the account already
-#  call importServerTemplate($map_st)
+  call importServerTemplate($map_st)
   
-  # Calculate where to launch the system
-
   # Use the pricing API to get some numbers
   
   # For now we are using the single account we are in.
@@ -184,7 +169,7 @@ define launch_servers() return $chosen_region_name, $chosen_datacenter_name, $ch
   # So accounting for multiple accounts would be needed and why the parameter to the find_reserved_instances() takes an array.
   call find_account_number() retrieve $rs_account_number
   call find_reserved_instances([$rs_account_number]) retrieve $res_instances
-  call audit_log("reserved instances hash", to_s($res_instances))
+#  call audit_log("reserved instances hash", to_s($res_instances))
   
   # Now see what if anything is out there running using the found reserved instance types
   $where_to_launch = {}
@@ -213,7 +198,7 @@ define launch_servers() return $chosen_region_name, $chosen_datacenter_name, $ch
       $where_to_launch["cloud_name"] = @cloud.name
       $where_to_launch["cloud_href"] = $cloud_href
       $where_to_launch["datacenter_name"] = $datacenter_name
-      $where_to_launch["data_center_href"] = $datacenter_href
+      $where_to_launch["datacenter_href"] = $datacenter_href
       $where_to_launch["instance_type_name"] = $instance_type_name
       $where_to_launch["instance_type_href"] = $instance_type_href
       $where_to_launch["num_reserved_instances"] = $num_reserved_instances
@@ -222,6 +207,29 @@ define launch_servers() return $chosen_region_name, $chosen_datacenter_name, $ch
   end
   
   call audit_log("where to launch hash", to_s($where_to_launch))
+    
+  
+  
+  # Provision the resources 
+    
+  # modify resources with the selected cloud
+  $resource_hash = to_object(@ssh_key)
+  $resource_hash["fields"]["cloud_href"] = $where_to_launch["cloud_href"]
+  @ssh_key = $resource_hash
+  
+  $resource_hash = to_object(@sec_group)
+  $resource_hash["fields"]["cloud_href"] = $where_to_launch["cloud_href"]
+  @sec_group = $resource_hash   
+  
+  $server_hash = to_object(@linux_server)
+  $server_hash["fields"]["cloud_href"] = $where_to_launch["cloud_href"]
+  $server_hash["fields"]["datacenter_href"] = $where_to_launch["datacenter_href"]
+  $server_hash["fields"]["instance_type_href"] = $where_to_launch["instance_type_href"]
+
+  @linux_server = $server_hash  
+
+  # Launch the server
+  provision(@linux_server)
 
   $chosen_region_name = $where_to_launch["cloud_name"]
   $chosen_datacenter_name = $where_to_launch["datacenter_name"]
@@ -234,105 +242,7 @@ end
   
      
     
-#  # Provision the resources
-#
-#  # Create credentials used to access the MySQL database as part of the CAT to make it more portable.
-#  call createCreds(["CAT_MYSQL_ROOT_PASSWORD","CAT_MYSQL_APP_PASSWORD","CAT_MYSQL_APP_USERNAME"])
-#    
-#  # find the MCI to use based on which cloud was selected.
-#  @multi_cloud_image = find("multi_cloud_images", map($map_mci, map($map_cloud, $param_location, "mci_mapping"), "mci_name"), map($map_mci, map($map_cloud, $param_location, "mci_mapping"), "mci_rev"))
-#  $multi_cloud_image_href = @multi_cloud_image.href
-#    
-#  # modify resources with the cheapest cloud
-#  $resource_hash = to_object(@ssh_key)
-#  $resource_hash["fields"]["cloud_href"] = $cheapest_cloud_href
-#  @ssh_key = $resource_hash
-#  
-#  $resource_hash = to_object(@sec_group)
-#  $resource_hash["fields"]["cloud_href"] = $cheapest_cloud_href
-#  @sec_group = $resource_hash   
-#  
-#  $resource_hash = to_object(@placement_group)
-#  $resource_hash["fields"]["cloud_href"] = $cheapest_cloud_href
-#  @placement_group = $resource_hash  
-#  
-#  $lb_hash = to_object(@lb_server)
-#  $lb_hash["fields"]["cloud_href"] = $cheapest_cloud_href
-#  $lb_hash["fields"]["multi_cloud_image_href"] = $multi_cloud_image_href
-#  $lb_hash["fields"]["instance_type_href"] = $cheapest_instance_type_href
-#    
-#  $webtier_hash = to_object(@app_server)
-#  $webtier_hash["fields"]["cloud_href"] = $cheapest_cloud_href
-#  $webtier_hash["fields"]["multi_cloud_image_href"] = $multi_cloud_image_href
-#  $webtier_hash["fields"]["instance_type_href"] = $cheapest_instance_type_href
-#    
-#  $db_hash = to_object(@db_server)
-#  $db_hash["fields"]["cloud_href"] = $cheapest_cloud_href
-#  $db_hash["fields"]["multi_cloud_image_href"] = $multi_cloud_image_href
-#  $db_hash["fields"]["instance_type_href"] = $cheapest_instance_type_href      
-#    
-#  if map($map_cloud, $param_location, "zone")   
-#    $lb_hash["fields"]["datacenter_href"] = $cheapest_datacenter_href
-#    $webtier_hash["fields"]["datacenter_href"] = $cheapest_datacenter_href
-#    $db_hash["fields"]["datacenter_href"] = $cheapest_datacenter_href
-#  end
-#  
-#  if map($map_cloud, $param_location, "ssh_key")
-#    provision(@ssh_key)
-#    $lb_hash["fields"]["ssh_key_href"] = @ssh_key.href
-#    $webtier_hash["fields"]["ssh_key_href"] = @ssh_key.href
-#    $db_hash["fields"]["ssh_key_href"] = @ssh_key.href
-#  end
-#  
-#  if map($map_cloud, $param_location, "pg")
-#    provision(@placement_group)
-#    $lb_hash["fields"]["placement_group_href"] = @placement_group.href
-#    $webtier_hash["fields"]["placement_group_href"] = @placement_group.href
-#    $db_hash["fields"]["placement_group_href"] = @placement_group.href
-#  end
-#  
-#  if map($map_cloud, $param_location, "sg")
-#    provision(@sec_group_rule_http)
-#    provision(@sec_group_rule_http8080)
-#    provision(@sec_group_rule_mysql)
-#    $lb_hash["fields"]["security_group_hrefs"] = [@sec_group.href]
-#    $webtier_hash["fields"]["security_group_hrefs"] = [@sec_group.href]
-#    $db_hash["fields"]["security_group_hrefs"] = [@sec_group.href]
-#  end
-#  
-#  @lb_server = $lb_hash  
-#  @app_server = $webtier_hash
-#  @db_server = $db_hash
-#  
-#  # Launch the servers concurrently
-#  concurrent return  @lb_server, @app_server, @db_server do 
-#    sub task_name:"Launch DB" do
-#      task_label("Launching DB")
-#      $db_retries = 0 
-#      sub on_error: handle_retries($db_retries) do
-#        $db_retries = $db_retries + 1
-#        provision(@db_server)
-#      end
-#    end
-#    sub task_name:"Launch LB" do
-#      task_label("Launching LB")
-#      $lb_retries = 0 
-#      sub on_error: handle_retries($lb_retries) do
-#        $lb_retries = $lb_retries + 1
-#        provision(@lb_server)
-#      end
-#    end
-#    
-#    sub task_name:"Launch Application Tier" do
-#      task_label("Launching Application Tier")
-#      $apptier_retries = 0 
-#      sub on_error: handle_retries($apptier_retries) do
-#        $apptier_retries = $apptier_retries + 1
-#        provision(@app_server)
-#      end
-#    end
-#  end
-#  
+
 #  concurrent do  
 #    # Enable monitoring for server-specific application software
 #    call run_recipe_inputs(@lb_server, "rs-haproxy::collectd", {})
