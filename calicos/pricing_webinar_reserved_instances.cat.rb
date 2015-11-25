@@ -55,7 +55,7 @@ mapping "map_st" do {
 
 mapping "map_mci" do {
   "Public" => { # all other clouds
-    "Ubuntu_mci" => "RightImage_Ubuntu_14.04_x64_v14.2_EBS",
+    "Ubuntu_mci" => "RightImage_Ubuntu_14.04_x64_v14.2_HVM_EBS",
     "Ubuntu_mci_rev" => "6"
   }
 } end
@@ -95,6 +95,8 @@ end
 ### Server Definition ###
 resource "linux_server", type: "server" do
   name 'Linux Server'
+  network @vpc_network
+  subnets @vpc_subnet
   ssh_key_href @ssh_key
   security_group_hrefs @sec_group
   server_template_href find(map($map_st, "linux_server", "name"), revision: map($map_st, "linux_server", "rev"))
@@ -110,6 +112,7 @@ end
 resource "sec_group", type: "security_group" do
   name join(["sg_", last(split(@@deployment.href,"/"))])
   description "Linux Server security group."
+  network @vpc_network
 end
 
 resource "sec_group_rule_ssh", type: "security_group_rule" do
@@ -129,6 +132,39 @@ end
 ### SSH Key ###
 resource "ssh_key", type: "ssh_key" do
   name join(["sshkey_", last(split(@@deployment.href,"/"))])
+end
+
+### Network Definitions ###
+resource "vpc_network", type: "network" do
+  name join(["cat_vpc_", last(split(@@deployment.href,"/"))])
+  cidr_block "192.168.164.0/24"
+end
+
+resource "vpc_subnet", type: "subnet" do
+  name join(["cat_subnet_", last(split(@@deployment.href,"/"))])
+  network_href @vpc_network
+  cidr_block "192.168.164.0/28"
+end
+
+resource "vpc_igw", type: "network_gateway" do
+  name join(["cat_igw_", last(split(@@deployment.href,"/"))])
+  type "internet"
+  network @vpc_network
+end
+
+resource "vpc_route_table", type: "route_table" do
+  name join(["cat_route_table_", last(split(@@deployment.href,"/"))])
+  network @vpc_network
+end
+
+# This route is needed to allow the server to be able to talk back to RightScale.
+# For a production environment you would probably want to limit the outbound route to just RightScale CIDRs and required ports.
+# But for a demo CAT, this is fine. :)
+resource "vpc_route", type: "route" do
+  name join(["cat_internet_route_", last(split(@@deployment.href,"/"))])
+  destination_cidr_block "0.0.0.0/0" 
+  next_hop_network_gateway @vpc_igw
+  route_table @vpc_route_table
 end
 
 ##################
@@ -154,10 +190,15 @@ operation "launch" do
   } end
 end
 
+operation "terminate" do 
+  description "Clean up"
+  definition "terminate"
+end
+
 ##########################
 # DEFINITIONS (i.e. RCL) #
 ##########################
-define launch_servers(@linux_server, @ssh_key, @sec_group, @sec_group_rule_ssh, $map_st) return @linux_server, @sec_group, @ssh_key, $chosen_region_name, $chosen_datacenter_name, $chosen_instance_type_name, $number_res_instances, $number_running_instances do
+define launch_servers(@linux_server, @ssh_key, @sec_group, @sec_group_rule_ssh, @vpc_network, @vpc_subnet, @vpc_igw, @vpc_route_table, @vpc_route, $map_st) return @linux_server, @sec_group, @ssh_key, @vpc_network, @vpc_subnet, @vpc_igw, @vpc_route_table, @vpc_route, $chosen_region_name, $chosen_datacenter_name, $chosen_instance_type_name, $number_res_instances, $number_running_instances do
 
   # Find and import the server template - just in case it hasn't been imported to the account already
   call importServerTemplate($map_st)
@@ -213,6 +254,23 @@ define launch_servers(@linux_server, @ssh_key, @sec_group, @sec_group_rule_ssh, 
   # Provision the resources 
     
   # modify resources with the selected cloud
+  $resource_hash = to_object(@vpc_network)
+  $resource_hash["fields"]["cloud_href"] = $where_to_launch["cloud_href"]
+  @vpc_network = $resource_hash
+  
+  $resource_hash = to_object(@vpc_subnet)
+  $resource_hash["fields"]["cloud_href"] = $where_to_launch["cloud_href"]
+  $resource_hash["fields"]["datacenter_href"] = $where_to_launch["datacenter_href"]
+  @vpc_subnet = $resource_hash
+  
+  $resource_hash = to_object(@vpc_igw)
+  $resource_hash["fields"]["cloud_href"] = $where_to_launch["cloud_href"]
+  @vpc_igw = $resource_hash
+  
+  $resource_hash = to_object(@vpc_route_table)
+  $resource_hash["fields"]["cloud_href"] = $where_to_launch["cloud_href"]
+  @vpc_route_table = $resource_hash
+  
   $resource_hash = to_object(@ssh_key)
   $resource_hash["fields"]["cloud_href"] = $where_to_launch["cloud_href"]
   @ssh_key = $resource_hash
@@ -225,8 +283,27 @@ define launch_servers(@linux_server, @ssh_key, @sec_group, @sec_group_rule_ssh, 
   $server_hash["fields"]["cloud_href"] = $where_to_launch["cloud_href"]
   $server_hash["fields"]["datacenter_href"] = $where_to_launch["datacenter_href"]
   $server_hash["fields"]["instance_type_href"] = $where_to_launch["instance_type_href"]
-
   @linux_server = $server_hash  
+
+  
+  provision(@vpc_network)
+  
+  concurrent return @vpc_subnet, @vpc_igw, @vpc_route_table  do
+    provision(@vpc_subnet)
+    provision(@vpc_igw)
+    provision(@vpc_route_table)    
+  end
+  
+  concurrent return @vpc_route, @sec_group, @sec_group_rule_ssh, @ssh_key do
+    provision(@vpc_route)
+    # The provision of the rule will automatically provision the group so it needs to be returned outside 
+    # of this concurrent operation but not explicitly provisioned.
+    provision(@sec_group_rule_ssh)
+    provision(@ssh_key)
+  end
+  
+  # configure the network to use the route table
+  @vpc_network.update(network: {route_table_href: to_s(@vpc_route_table.href)})
 
   # Launch the server
   provision(@linux_server)
@@ -239,58 +316,30 @@ define launch_servers(@linux_server, @ssh_key, @sec_group, @sec_group_rule_ssh, 
 
 end
   
+define terminate(@vpc_network, @vpc_subnet, @vpc_igw, @vpc_route_table, @vpc_route, @linux_server, @sec_group, @sec_group_rule_ssh, @ssh_key) do
   
-     
-    
-
-#  concurrent do  
-#    # Enable monitoring for server-specific application software
-#    call run_recipe_inputs(@lb_server, "rs-haproxy::collectd", {})
-#    call run_recipe_inputs(@app_server, "rs-application_php::collectd", {})  
-#    call run_recipe_inputs(@db_server, "rs-mysql::collectd", {})   
-#    
-#    # Import a test database
-#    call run_recipe_inputs(@db_server, "rs-mysql::dump_import", {})  # applicable inputs were set at launch
-#    
-#    # Set up the tags for the load balancer and app servers to find each other.
-#    call run_recipe_inputs(@lb_server, "rs-haproxy::tags", {})
-#    call run_recipe_inputs(@app_server, "rs-application_php::tags", {})  
-#    
-#    # Due to the concurrent launch above, it's possible the app server came up before the DB server and wasn't able to connect.
-#    # So, we re-run the application setup script to force it to connect.
-#    call run_recipe_inputs(@app_server, "rs-application_php::default", {})
-#  end
-#    
-#  # Now that all the servers are good to go, tell the LB to find the app server.
-#  # This must run after the tagging is complete, so it is done outside the concurrent block above.
-#  call run_recipe_inputs(@lb_server, "rs-haproxy::frontend", {})
-#    
-#  # If deployed in Azure one needs to provide the port mapping that Azure uses.
-#  if $param_location == "Azure"
-#     @bindings = rs.clouds.get(href: @lb_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @lb_server.current_instance().href])
-#     @binding = select(@bindings, {"private_port":80})
-#     $server_addr = join([to_s(@lb_server.current_instance().public_ip_addresses[0]), ":", @binding.public_port])
-#  else
-#    if $param_location == "VMware"  # Use private IP for VMware envs
-#        # Wait for the server to get the IP address we're looking for.
-#        while equals?(@lb_server.current_instance().private_ip_addresses[0], null) do
-#          sleep(10)
-#        end
-#        $server_addr =  to_s(@lb_server.current_instance().private_ip_addresses[0])
-#        $vmware_note_text = "Your CloudApp was deployed in a VMware environment on a private network and so is not directly accessible."
-#    else
-#        # Wait for the server to get the IP address we're looking for.
-#        while equals?(@lb_server.current_instance().public_ip_addresses[0], null) do
-#          sleep(10)
-#        end
-#        $server_addr =  to_s(@lb_server.current_instance().public_ip_addresses[0])
-#    end
-#  end
-#  $site_link = join(["http://", $server_addr, "/dbread"])
-#  $lb_status_link = join(["http://", $server_addr, "/haproxy-status"])
-#    
-#  call calc_app_cost(@app_server) retrieve $app_cost
-
+  # destroy the server
+  delete(@linux_server)
+  
+  # switch back in the default route table so that auto-terminate doesn't hit a dependency issue when cleaning up.
+  # Another approach would have been to not create and associate a new route table but instead find the default route table
+  # and add the outbound 0.0.0.0/0 route to it.
+  
+  @other_route_table = @vpc_route_table #  initializing the variable
+  # Find the route tables associated with our network. 
+  # There should be two: the one we created above and the default one that is created for new networks.
+  @route_tables=rs.route_tables.get(filter: [join(["network_href==",to_s(@vpc_network.href)])])
+  foreach @route_table in @route_tables do
+    if @route_table.href != @vpc_route_table.href
+      # We found the default route table
+      @other_route_table = @route_table
+    end
+  end
+  # Update the network to use the default route table 
+  @vpc_network.update(network: {route_table_href: to_s(@other_route_table.href)})
+  
+  # The rest of the resources will be cleaned up by auto-terminate
+end 
 
 
 # Imports the server templates found in the given map.
