@@ -28,7 +28,9 @@
 # Required prolog
 name 'Efficient Reserved Instance Usage'
 rs_ca_ver 20131202
-short_description "Finds any available Reserved Instances and launches accordingly to use those reserved instances."
+short_description "![logo](https://s3.amazonaws.com/rs-pft/cat-logos/reserved-sign1.jpg)
+
+Finds any available Reserved Instances and launches into datacenter with most headroom."
 
 ###########
 # Mappings
