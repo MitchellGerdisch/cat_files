@@ -327,6 +327,8 @@ resource "server_array_1", type: "server_array" do
   ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
   security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
   inputs do {
+    "APPLICATION_LISTENER_PORT" => "text:80",
+    "FIREWALL_OPEN_PORTS_TCP" => "text:80",
     "REMOTE_STORAGE_ACCOUNT_ID_APP" => "cred:AWS_ACCESS_KEY_ID",
     "REMOTE_STORAGE_ACCOUNT_PROVIDER_APP" => "text:Amazon_S3",
     "REMOTE_STORAGE_ACCOUNT_SECRET_APP" => "cred:AWS_SECRET_ACCESS_KEY",
