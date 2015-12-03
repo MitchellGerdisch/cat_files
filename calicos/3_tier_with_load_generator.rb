@@ -350,7 +350,7 @@ resource "server_array_1", type: "server_array" do
       "max_count"            => $array_max_size
     },
     "pacing" => {
-      "resize_calm_time"     => 5, 
+      "resize_calm_time"     => 30, 
       "resize_down_by"       => 1,
       "resize_up_by"         => 1
     },
