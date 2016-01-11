@@ -68,7 +68,7 @@
 #   Scaling:
 #     Operation available to scale out and in
 
-name "IIS-SQL Dev Stack"
+name "IIS-SQL Dev Stack - AWS and VMware Support"
 rs_ca_ver 20131202
 short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)\n
 Builds a scalable HAproxy - IIS - MS_SQL 3-tier website workload."
@@ -85,9 +85,8 @@ parameter "param_location" do
   label "Cloud" 
   type "string" 
   description "Cloud to deploy in." 
-  allowed_values "AWS-Australia", "AWS-Brazil", "AWS-Japan", "AWS-USA", "Azure-Netherlands", "Azure-Singapore", "Azure-USA"
-#  allowed_values "Azure-USA", "AWS-USA", "AWS-Australia", "AWS-Brazil"
-  default "AWS-USA"
+  allowed_values "AWS", "VMware"
+  default "AWS"
 end
 
 parameter "param_performance" do 
@@ -97,15 +96,6 @@ parameter "param_performance" do
   description "Compute and RAM" 
   allowed_values "low", "medium", "high"
   default "low"
-end
-
-parameter "param_data_file" do 
-  category "S3 info"
-  label "DB initial file" 
-  type "string" 
-  description "Initial file to use for DB" 
-  allowed_pattern "[a-z0-9][a-z0-9-_.]*"
-  default "DotNetNuke.bak"
 end
 
 parameter "array_min_size" do
@@ -135,45 +125,50 @@ mapping "map_instance_type" do {
     "high" => "m3.large", 
   },
   "Azure" => {
-    "low" => "medium", # 2 CPUs x 3.5GB
-    "medium" => "large", # 4 CPUs x 7GB
-    "high" => "extra large", # 8CPUs x 15GB
+    "low" => "medium", 
+    "medium" => "large", 
+    "high" => "extra large", 
+  },
+  "VMware" => {
+    "low" => "small", 
+    "medium" => "large", 
+    "high" => "large",
   },
 }
 end
 
 mapping "map_cloud" do {
-  "AWS-Australia" => {
-    "provider" => "AWS",
-    "cloud" => "ap-southeast-2",
-  },
-  "AWS-Brazil" => {
-    "provider" => "AWS",
-    "cloud" => "sa-east-1",
-  },
-  "Azure-Netherlands" => {
-    "provider" => "Azure",
-    "cloud" => "Azure West Europe",
-  },
-  "AWS-Japan" => {
-    "provider" => "AWS",
-    "cloud" => "ap-northeast-1",
-  },
-  "Azure-Singapore" => {
-    "provider" => "Azure",
-    "cloud" => "Azure Southeast Asia",
-  },
-  "AWS-USA" => {
+  "AWS" => {
     "provider" => "AWS",
     "cloud" => "us-east-1",
+    "mci_mapping" => "Public",
   },
-  "Azure-USA" => {   
-   "provider" => "Azure",
-    "cloud" => "Azure East US",
+  "VMware" => {   
+   "provider" => "VMware",
+   "cloud" => "Basefarm VMware",
+   "mci_mapping" => "VMware",
   },
 }
 end
 
+mapping "map_mci" do {
+  "VMware" => { # vSphere 
+    "lb_mci_name" => "RightImage_CentOS_6.6_x64_v14.2_VMware",
+    "lb_mci_rev" => "9",
+    "db_mci_name" => "RightImage_Windows_2008R2_x64_sqlsvr2012_v14.2.1 - BF VMware",
+    "db_mci_rev" => "1",
+    "app_mci_name" => "RightImage_Windows_2008R2_x64_iis7.5_v14.2.1 - BF VMware",
+    "app_mci_rev" => "1",
+  },
+  "Public" => { # all other clouds
+    "lb_mci_name" => "RightImage_CentOS_6.6_x64_v13.5_LTS_EBS",
+    "lb_mci_rev" => "6",
+    "db_mci_name" => "RightImage_Windows_2008R2_SP1_x64_sqlsvr2012_v13.5.0-LTS",
+    "db_mci_rev" => "2",
+    "app_mci_name" => "RightImage_Windows_2008R2_SP1_x64_iis7.5_v13.5.0-LTS",
+    "app_mci_rev" => "1"
+  }
+} end
 
 
 mapping "map_account" do {
@@ -184,7 +179,6 @@ mapping "map_account" do {
     "restore_db_script_href" => "555620003",
     "create_db_login_script_href" => "555604003",
     "restart_iis_script_href" => "555633003",
-    "lb_image_href" => "/api/multi_cloud_images/404621003",
     "placement_group" => "bf3tierpg"
   },
 }
@@ -205,6 +199,9 @@ condition "inAzure" do
   equals?(map($map_cloud, $param_location,"provider"), "Azure")
 end
 
+condition "needsSshKey" do
+  logic_or(equals?(map($map_cloud, $param_location,"provider"), "AWS"), equals?(map($map_cloud, $param_location,"provider"), "VMware"))
+end
 
 ##############
 # OUTPUTS    #
@@ -232,11 +229,10 @@ resource "lb_1", type: "server" do
   name "Tier 1 - LB 1"
   cloud map( $map_cloud, $param_location, "cloud" )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
-  server_template find("Load Balancer with HAProxy (v13.5.11-LTS)", revision: 25)
-  ssh_key switch($inAWS, map($map_account, "Account_Specifics", "ssh_key"), null)
-#usedefault  placement_group switch($inAzure, map($map_account, "Account_Specifics", "placement_group"), null)
+  server_template find("Load Balancer with HAProxy (v14.1.1) - BF")
+  multi_cloud_image_href find(map($map_mci, map($map_cloud, $param_location, "mci_mapping"), "mci_name"), revision: map($map_mci, map($map_cloud, $param_location, "mci_mapping"), "mci_rev"))
+  ssh_key switch($needsSshKey, map($map_account, "Account_Specifics", "ssh_key"), null)
   security_groups switch($inAWS, map($map_account, "Account_Specifics", "security_group"), null)
-  multi_cloud_image_href switch($inAWS, map($map_account, "Account_Specifics", "lb_image_href"), null)  
   inputs do {
     "lb/session_stickiness" => "text:false",   
   } end
@@ -246,8 +242,8 @@ resource "db_1", type: "server" do
   name "Tier 3 - DB 1"
   cloud map( $map_cloud, $param_location, "cloud" )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
-  server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS) vTLS")
-  ssh_key switch($inAWS, map($map_account, "Account_Specifics", "ssh_key"), null)
+  server_template find("Database Manager for Microsoft SQL Server (13.5.1-LTS) - BF")
+  ssh_key switch($needsSshKey, map($map_account, "Account_Specifics", "ssh_key"), null)
 #usedefault  placement_group switch($inAzure, map($map_account, "Account_Specifics", "placement_group"), null)  
   security_groups switch($inAWS, map($map_account, "Account_Specifics", "security_group"), null)
     inputs do {
@@ -276,8 +272,8 @@ resource "server_array_1", type: "server_array" do
   name "Tier 2 - IIS App Server"
   cloud map( $map_cloud, $param_location, "cloud" )
   instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
-  server_template find("Microsoft IIS App Server (v13.5.0-LTS)")
-  ssh_key switch($inAWS, map($map_account, "Account_Specifics", "ssh_key"), null)
+  server_template find("Microsoft IIS App Server (v13.5.0-LTS) - BF")
+  ssh_key switch($needsSshKey, map($map_account, "Account_Specifics", "ssh_key"), null)
 #usedefault  placement_group switch($inAzure, map($map_account, "Account_Specifics", "placement_group"), null)
   security_groups switch($inAWS, map($map_account, "Account_Specifics", "security_group"), null)
   inputs do {
@@ -448,6 +444,9 @@ define enable_application(@lb_1, @db_1, @server_array_1, $inAzure,  $map_account
   # call multi_run_script(@server_array_1, "/api/right_scripts/524965004")
   call multi_run_script(@server_array_1,  join(["/api/right_scripts/", $restart_iis_script]))
     
+  call run_recipe_inputs(@lb_1, "rs-haproxy::frontend", {})
+
+    
   # If deployed in Azure one needs to provide the port mapping that Azure uses.
   if $inAzure
      @bindings = rs.clouds.get(href: @lb_1.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @lb_1.current_instance().href])
@@ -564,15 +563,7 @@ define run_recipe(@target, $recipe_name) do
   end
 end
 
-# Helper definition, runs a recipe on given server with the given inputs, waits until recipe completes or fails
-# Raises an error in case of failure
-define run_recipe_inputs(@target, $recipe_name, $recipe_inputs) do
-  @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: $recipe_inputs)
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $recipe_name
-  end
-end
+
 
 # Helper definition, runs a script on given server, waits until script completes or fails
 # Raises an error in case of failure
@@ -584,15 +575,7 @@ define run_script(@target, $right_script_href) do
   end
 end
 
-# Helper definition, runs a script on given server, waits until script completes or fails
-# Raises an error in case of failure
-define run_script_inputs(@target, $right_script_href, $script_inputs) do
-  @task = @target.current_instance().run_executable(right_script_href: $right_script_href, inputs: $script_inputs)
-  sleep_until(@task.summary =~ "^(completed|failed)")
-  if @task.summary =~ "failed"
-    raise "Failed to run " + $right_script_href
-  end
-end
+
 
 # Helper definition, runs a script on all instances in the array.
 # waits until script completes or fails
@@ -712,6 +695,55 @@ define handle_provision_error($count) do
   call log("Handling provision error: " + $_error["message"], "Notification")
   if $count < 5 
     $_error_behavior = "retry"
+  end
+end
+
+# Helper definition, runs a script on given server, waits until script completes or fails
+# Raises an error in case of failure
+define run_script_inputs(@target, $right_script_href, $script_inputs) do
+  @task = @target.current_instance().run_executable(right_script_href: $right_script_href, inputs: $script_inputs)
+  sleep_until(@task.summary =~ "^(completed|failed)")
+  if @task.summary =~ "failed"
+    raise "Failed to run " + $right_script_href
+  end
+end
+
+
+# Helper definition, runs a recipe on given server with the given inputs, waits until recipe completes or fails
+# Raises an error in case of failure
+#define run_recipe_inputs(@target, $recipe_name, $recipe_inputs) do
+#  @task = @target.current_instance().run_executable(recipe_name: $recipe_name, inputs: $recipe_inputs)
+#  sleep_until(@task.summary =~ "^(completed|failed)")
+#  if @task.summary =~ "failed"
+#    raise "Failed to run " + $recipe_name
+#  end
+#end
+define run_recipe_inputs(@target, $recipe_name, $recipe_inputs) do
+  $target_type = type(@target)
+  if equals?($target_type, "rs.server_arrays") 
+    
+    @running_servers = select(@target.current_instances(), {"state":"operational"})
+    @tasks = @running_servers.run_executable(recipe_name: $recipe_name, inputs: $recipe_inputs)
+    sleep_until(all?(@tasks.summary[], "/^(completed|failed)/"))
+    if any?(@tasks.summary[], "/^failed/")
+      raise "Failed to run " + $right_script_href + " on one or more instances"
+    end
+    
+  else # server or instance
+    
+    if equals?($target_type, "rs.instances")
+      @exec_target=@target # target is already an instance type so we're good to go
+    else
+      @exec_target=@target.current_instance() # target is a server and so we need to link to the instance
+    end
+    
+    # Run the recipe against the instance
+    @task = @exec_target.run_executable(recipe_name: $recipe_name, inputs: $recipe_inputs)
+    sleep_until(@task.summary =~ "^(completed|failed)")
+    if @task.summary =~ "failed"
+      raise "Failed to run " + $recipe_name
+    end
+    
   end
 end
 
