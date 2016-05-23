@@ -36,7 +36,8 @@ parameter "param_tag_key" do
   category "User Inputs"
   label "Tags' Namespace:Keys List" 
   type "string" 
-  description "Comma-separated list of Tags' Namespace:Keys to audit. For example: \"ec2:project_code\" or \"bu:id\"" 
+  description "Comma-separated list of Tags' Namespace:Keys to audit. For example: \"ec2:project_code\" or \"bu:id\""
+  default "costcenter:id" 
   allowed_pattern '^([a-zA-Z0-9-_]+:[a-zA-Z0-9-_]+,*)+$'
 end
 
@@ -59,9 +60,9 @@ end
 # Outputs returned to the user #
 ################################
 output "output_bad_instances" do
-  label "Untagged Instances"
+  label "Instances Missing Specified Tag(s)"
   category "Output"
-  description "Instances missing the specified tag."
+  description "Instances missing the specified tag(s)."
 end
 
 
@@ -125,6 +126,7 @@ define tag_checker() return $bad_instances do
   # Get the stored parameters from the deployment tags
   $tag_key = ""
   $check_frequency = 5
+  $cloud_scope = ""
   call get_tags_for_resource(@@deployment) retrieve $tags_on_deployment
   $href_tag = map $current_tag in $tags_on_deployment return $tag do
     if $current_tag =~ "(tagchecker:tag_key)"
@@ -136,19 +138,29 @@ define tag_checker() return $bad_instances do
     end
   end
   
+#  call logger(@@deployment, "tag_key: " + $tag_key, "")
+  
   
   if $cloud_scope == "All"
-    @instances = rs.instances.get(filter: ["state==operational"])
-    @instances = @instances + rs.instances.get(filter: ["state==provisioned"])
-    @instances = @instances + rs.instances.get(filter: ["state==running"])
+    @instances_operational = rs.instances.get(filter: ["state==operational"])
+    @instances_provisioned = rs.instances.get(filter: ["state==provisioned"])
+    @instances_running = rs.instances.get(filter: ["state==running"])
   else
-    @instances = rs.clouds.get(href: $cloud_scope).instances.get(filter: ["state==operational"])
-    @instances = @instances + rs.clouds.get(href: $cloud_scope).instances.get(filter: ["state==provisioned"])
-    @instances = @instances + rs.clouds.get(href: $cloud_scope).instances.get(filter: ["state==running"])
+    @instances_operational = rs.clouds.get(href: $cloud_scope).instances(filter: ["state==operational"])
+    @instances_provisioned = rs.clouds.get(href: $cloud_scope).instances(filter: ["state==provisioned"])
+    @instances_running = rs.clouds.get(href: $cloud_scope).instances(filter: ["state==running"])
   end
+  
+  @instances = @instances_operational + @instances_provisioned + @instances_running
 
   $instances_hrefs = to_object(@instances)["hrefs"]
+    
+#  call logger(@@deployment, "All instance hrefs:", to_s($instances_hrefs))
+
   $instances_tags = rs.tags.by_resource(resource_hrefs: [$instances_hrefs])
+  
+#  call logger(@@deployment, "All instance tags for given hrefs:", to_s($instances_tags))
+
   
   # The return from rs.tags is an array of one element which is in turn an array of hashes of this form:
   # { 
@@ -177,18 +189,18 @@ define tag_checker() return $bad_instances do
   # Loop through the tag info array and find any entries which DO NOT reference the tag(s) in question.
   $param_tag_keys_array = split($tag_key, ",")  # make the parameter list an array so I can search stuff 
 
-  call logger(@@deployment, "param_tag_keys_array:", to_s($param_tag_keys_array))
+#  call logger(@@deployment, "param_tag_keys_array:", to_s($param_tag_keys_array))
 
   $bad_instances_array=[]
   foreach $tag_info_hash in $tag_info_array do
-    call logger(@@deployment, "tag_info_hash:", to_s($tag_info_hash))
+#    call logger(@@deployment, "tag_info_hash:", to_s($tag_info_hash))
 
     # Create an array of the tags' namespace:key parts
     $tag_entry_ns_key_array=[]
     foreach $tag_entry in $tag_info_hash["tags"] do
       $tag_entry_ns_key_array << split($tag_entry["name"],"=")[0]
     end
-    call logger(@@deployment, "tag_entry_ns_key_array:", to_s($tag_entry_ns_key_array))
+#    call logger(@@deployment, "tag_entry_ns_key_array:", to_s($tag_entry_ns_key_array))
 
     # See if the desired keys are in the found tags and if not take note of the improperly tagged instances
     if logic_not(contains?($tag_entry_ns_key_array, $param_tag_keys_array))
@@ -201,7 +213,10 @@ define tag_checker() return $bad_instances do
   $bad_instances = to_s($bad_instances_array)
   call logger(@@deployment, "bad_instances:", $bad_instances)
   
-  call send_tags_alert_email($tag_key, $bad_instances)
+  # Send an alert email if there is at least one improperly tagged instance
+  if logic_not(empty?($bad_instances_array))
+    call send_tags_alert_email($tag_key, $cloud_scope, $bad_instances)
+  end
   
   call schedule_next_check($tag_key, $check_frequency)
 
@@ -210,7 +225,7 @@ end
 define schedule_next_check($tag_key_list,$check_frequency) do  
 #Creates a scheduled action to do another check in user-specified minutes
   
-  call logger(@@deployment, "Scheduling next action in "+$check_frequency+" minutes", "")
+#  call logger(@@deployment, "Scheduling next action in "+$check_frequency+" minutes", "")
 
   $action_name = "checktags_" + last(split(@@deployment.href,"/"))
 
@@ -246,7 +261,7 @@ define schedule_next_check($tag_key_list,$check_frequency) do
     body: $parms
   )
   
-  call logger(@@deployment, "Next schedule post response", to_s($response))
+#  call logger(@@deployment, "Next schedule post response", to_s($response))
 
 end
 
@@ -326,7 +341,7 @@ define login_to_self_service($account_id, $shard) do
     url: "https://selfservice-"+$shard+".rightscale.com/api/catalog/new_session?account_id=" + $account_id
   )
   
-  call logger(@@deployment, "login to self service response", to_s($response))
+#  call logger(@@deployment, "login to self service response", to_s($response))
 
 end
 
@@ -379,13 +394,16 @@ end
 
 # Sends an email using SendGrid service
 # REQUIRES that the API key be stored in a credential called SENDGRID_API_KEY
-define send_tags_alert_email($tags, $bad_instances) do
+define send_tags_alert_email($tags, $cloud_scope, $bad_instances) do
   
   # Get API key credential
   @cred = rs.credentials.get(filter: "name==SENDGRID_API_KEY", view: "sensitive") 
   $cred_hash = to_object(@cred)
   $cred_value = $cred_hash["details"][0]["value"]
   $api_key = $cred_value
+  
+  # Get account ID
+  call sys_get_account_id() retrieve $account_id
   
   # Build email
   $deployment_description_array = lines(@@deployment.description)
@@ -401,7 +419,7 @@ define send_tags_alert_email($tags, $bad_instances) do
   $body = {
     "personalizations": [{"to": [{"email": $userid}]}],
     "from": {"email": "self-service@rightscale.com"},
-    "subject": "Missing Tags Alert",
+    "subject": "Missing Tags Alert - Account: " + $account_id + "- Cloud(s): " + $cloud_scope,
     "content": [{"type": "text/plain", "value": $message}]
   }
 
@@ -414,7 +432,7 @@ define send_tags_alert_email($tags, $bad_instances) do
     body: $body
     )
     
-  call logger(@@deployment, "Email Send Response", to_s($response))
+#  call logger(@@deployment, "Email Send Response", to_s($response))
 end
 
 define logger(@deployment, $summary, $details) do
