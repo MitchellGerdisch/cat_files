@@ -389,24 +389,24 @@ operation "enable" do
   } end
 end 
 
-operation "start" do
-  condition $inAWS  # Can only do stop/start in AWS
-  description "Used to restart servers after stopping them."
-  definition "start_servers"
-  
-  # Update the links provided in the outputs.
-  output_mappings do {
-    $end2end_test => join(["http://", $lb_1_public_ip_address]),
-    $haproxy_status => join(["http://", $lb_1_public_ip_address, "/haproxy-status"])
-  } end
-  
-end
-
-operation "stop" do
-  condition $inAWS # Can only do stop/start in AWS
-  description "Used to stop servers without terminating them."
-  definition "stop_servers"
-end
+#operation "start" do
+#  condition $inAWS  # Can only do stop/start in AWS
+#  description "Used to restart servers after stopping them."
+#  definition "start_servers"
+#  
+#  # Update the links provided in the outputs.
+#  output_mappings do {
+#    $end2end_test => join(["http://", $lb_1_public_ip_address]),
+#    $haproxy_status => join(["http://", $lb_1_public_ip_address, "/haproxy-status"])
+#  } end
+#  
+#end
+#
+#operation "stop" do
+#  condition $inAWS # Can only do stop/start in AWS
+#  description "Used to stop servers without terminating them."
+#  definition "stop_servers"
+#end
 
 operation "scale_out" do
   description "Scales out another application server."

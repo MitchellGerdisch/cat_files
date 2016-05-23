@@ -68,7 +68,7 @@
 #   Scaling:
 #     Operation available to scale out and in
 
-name "IIS-SQL Dev Stack v2"
+name "IIS-SQL Dev Stack"
 rs_ca_ver 20131202
 short_description "![Windows](http://www.cscopestudios.com/images/winhosting.jpg)\n
 Builds a scalable HAproxy - IIS - MS_SQL 3-tier website workload."
@@ -165,7 +165,7 @@ end
 # _Hybrid Cloud is replacd by the Ant build file with the applicable account name based on build target.
 mapping "map_current_account" do {
   "current_account_name" => {
-    "current_account" => "PFT_500",
+    "current_account" => "Agilani",
   },
 }
 end
@@ -174,15 +174,15 @@ end
 #       Use improved methods to find scripts instead of the hrefs.
 
 mapping "map_account" do {
-  "PFT_500" => {  
-    "security_group" => "IIS_3tier_default_SecGrp",
-    "ssh_key" => "default",
-    "s3_bucket" => "pft500-3tier-bucket",
-    "restore_db_script_href" => "556113003",
-    "create_db_login_script_href" => "556097003",
-    "restart_iis_script_href" => "556127003",
-    "lb_image_href" => "/api/multi_cloud_images/395115003",
-    "placement_group" => "pft5003tierpg"
+  "Agilani" => {  
+    "security_group" => "rightscale-win3tier",
+    "ssh_key" => "AppKey",
+    "s3_bucket" => "rightscale-agilani-windows-stack",
+    "restore_db_script_href" => "557487003",
+    "create_db_login_script_href" => "557471003",
+    "restart_iis_script_href" => "557501003",
+    "lb_image_href" => "/api/multi_cloud_images/408723003",
+    "placement_group" => "na"
   },
 }
 end
