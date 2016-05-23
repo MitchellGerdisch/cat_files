@@ -48,6 +48,13 @@ parameter "parameter_check_frequency" do
   min_value 5
 end
 
+parameter "parameter_cloud" do
+  category "User Inputs"
+  label "Cloud to look in (enter cloud href to limit scope)"
+  type "string"
+  default "All"
+end
+
 ################################
 # Outputs returned to the user #
 ################################
@@ -103,10 +110,11 @@ define tester() do
 end
 
 # Go through and find improperly tagged instances
-define launch_tag_checker($param_tag_key, $parameter_check_frequency) return $bad_instances do
+define launch_tag_checker($param_tag_key, $parameter_check_frequency, $parameter_cloud) return $bad_instances do
   # add deployment tags for the parameters and then tell tag_checker to go 
   rs.tags.multi_add(resource_hrefs: [@@deployment.href], tags: [join(["tagchecker:tag_key=",$param_tag_key])])
   rs.tags.multi_add(resource_hrefs: [@@deployment.href], tags: [join(["tagchecker:check_frequency=",$parameter_check_frequency])])
+  rs.tags.multi_add(resource_hrefs: [@@deployment.href], tags: [join(["tagchecker:cloud_scope=",$parameter_cloud])])
 
   call tag_checker() retrieve $bad_instances
 end
@@ -123,13 +131,22 @@ define tag_checker() return $bad_instances do
       $tag_key = last(split($current_tag,"="))
     elsif $current_tag =~ "(tagchecker:check_frequency)"
       $check_frequency = to_n(last(split($current_tag,"=")))
+    elsif $current_tag =~ "(tagchecker:cloud_scope)"
+      $cloud_scope = last(split($current_tag,"="))
     end
   end
   
   
-  @instances_operational = rs.instances.get(filter: ["state==operational"])
-  @instances_provisioned = rs.instances.get(filter: ["state==provisioned"])
-  @instances = @instances_operational + @instances_provisioned
+  if $cloud_scope == "All"
+    @instances = rs.instances.get(filter: ["state==operational"])
+    @instances = @instances + rs.instances.get(filter: ["state==provisioned"])
+    @instances = @instances + rs.instances.get(filter: ["state==running"])
+  else
+    @instances = rs.clouds.get(href: $cloud_scope).instances.get(filter: ["state==operational"])
+    @instances = @instances + rs.clouds.get(href: $cloud_scope).instances.get(filter: ["state==provisioned"])
+    @instances = @instances + rs.clouds.get(href: $cloud_scope).instances.get(filter: ["state==running"])
+  end
+
   $instances_hrefs = to_object(@instances)["hrefs"]
   $instances_tags = rs.tags.by_resource(resource_hrefs: [$instances_hrefs])
   
