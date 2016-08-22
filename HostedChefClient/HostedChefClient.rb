@@ -45,7 +45,7 @@
 
 name "Chef Client with Hosted Chef"
 rs_ca_ver 20131202
-short_description "![Chef](https://www.getchef.com/images/logo.svg)\n
+short_description "![Chef](https://s3.amazonaws.com/rs-pft/cat-logos/chef_logo_new.png)\n
 Builds a Chef Client server that connects to a hosted chef server."
 long_description "Deploy using one of the two preconfigured roles: turner or hooch.\n
 After deployment click the link to see the web server display.\n
@@ -58,21 +58,22 @@ After updated with the new role, refresh the web page.\n
 ##############
 
 parameter "param_location" do 
-  category "Deployment Options"
+  category "User Inputs"
   label "Cloud" 
   type "string" 
   description "Cloud to deploy in." 
-  allowed_values "AWS-Australia", "AWS-Brazil", "AWS-Japan", "AWS-USA", "Azure-Netherlands", "Azure-Singapore", "Azure-USA"
-  default "AWS-USA"
+  allowed_values "AWS", "Azure", "Google"
+  default "AWS"
 end
 
-parameter "param_performance" do 
-  category "Deployment Options"
-  label "Performance profile" 
-  type "string" 
-  description "Compute and RAM" 
-  allowed_values "low", "medium", "high"
-  default "low"
+parameter "param_instancetype" do
+  category "User Inputs"
+  label "Server Performance Level"
+  type "list"
+  description "Server performance level"
+  allowed_values "standard performance",
+    "high performance"
+  default "standard performance"
 end
 
 parameter "param_role" do 
@@ -100,78 +101,58 @@ mapping "map_hosted_chef_account" do {
 }
 end
 
-mapping "map_instance_type" do {
-  "AWS" => {
-    "low" => "m1.medium",  
-    "medium" => "c3.large", 
-    "high" => "c3.xlarge", 
+mapping "map_instancetype" do {
+  "standard performance" => {
+    "AWS" => "m3.medium",
+    "Azure" => "D1",
+    "Google" => "n1-standard-1",
+    "VMware" => "small",
   },
-  "RS" => {
-    # These choices are driven by what is configured for RS London cloud in RS.
-    "low" => "4GB Standard Instance", # 2 CPUs x 4GB
-    "medium" => "8GB Standard Instance", # 4CPUs  x 8GB
-    "high" => "15GB Standard Instance", # 6 CPUs x 15GB
-  },
-  "Azure" => {
-    "low" => "medium", # 2 CPUs x 3.5GB
-    "medium" => "large", # 4 CPUs x 7GB
-    "high" => "extra large", # 8CPUs x 15GB
-  },
-}
-end
+  "high performance" => {
+    "AWS" => "m3.large",
+    "Azure" => "D2",
+    "Google" => "n1-standard-2",
+    "VMware" => "large",
+  }
+} end
 
 mapping "map_cloud" do {
-  "AWS-Australia" => {
-    "provider" => "AWS",
-    "cloud" => "ap-southeast-2",
+  "AWS" => {
+    "cloud" => "EC2 us-east-1",
+    "zone" => null, # We don't care which az AWS decides to use.
+    "instance_type" => "m3.medium",
+    "sg" => '@sec_group',  
+    "ssh_key" => "@ssh_key",
+    "pg" => null,
+    "mci_mapping" => "Public",
   },
-  "AWS-Brazil" => {
-    "provider" => "AWS",
-    "cloud" => "sa-east-1",
-  },
-  "Azure-Netherlands" => {
-    "provider" => "Azure",
-    "cloud" => "Azure West Europe",
-  },
-  "AWS-Japan" => {
-    "provider" => "AWS",
-    "cloud" => "ap-northeast-1",
-  },
-  "Azure-Singapore" => {
-    "provider" => "Azure",
-    "cloud" => "Azure Southeast Asia",
-  },
-  "AWS-USA" => {
-    "provider" => "AWS",
-    "cloud" => "us-west-1",
-  },
-  "Azure-USA" => {   
-    "provider" => "Azure",
+  "Azure" => {   
     "cloud" => "Azure East US",
+    "zone" => null,
+    "instance_type" => "D1",
+    "sg" => null, 
+    "ssh_key" => null,
+    "pg" => "@placement_group",
+    "mci_mapping" => "Public",
   },
-}
-end
-
-# TO-DO: Get account info from the environment and use the mapping accordingly.
-# REAL TO-DO: Once API support is avaiable in CATs, create the security groups, etc in real-time.
-# map($map_current_account, 'current_account_name', 'current_account')
-# ___ACCOUNT_NAME__ is replacd by the Ant build file with the applicable account name based on build target.
-mapping "map_current_account" do {
-  "current_account_name" => {
-    "current_account" => "__ACCOUNT_NAME__",
+  "Google" => {
+    "cloud" => "Google",
+    "zone" => "us-central1-c", # launches in Google require a zone
+    "instance_type" => "n1-standard-2",
+    "sg" => '@sec_group',  
+    "ssh_key" => null,
+    "pg" => null,
+    "mci_mapping" => "Public",
   },
-}
-end
-
-mapping "map_account" do {
-  "CSE Sandbox" => {
-    "security_group" => "default",
-    "ssh_key" => "default",
-  },
-  "Hybrid Cloud" => {
-    "security_group" => "default",
-    "ssh_key" => "default",
-  },
+  "VMware" => {
+    "cloud" => "VMware Private Cloud",
+    "zone" => "VMware_Zone_1", # launches in vSphere require a zone being specified  
+    "instance_type" => "large",
+    "sg" => null, 
+    "ssh_key" => "@ssh_key",
+    "pg" => null,
+    "mci_mapping" => "VMware",
+  }
 }
 end
 
@@ -186,6 +167,26 @@ condition "inAWS" do
   equals?(map($map_cloud, $param_location,"provider"), "AWS")
 end
 
+# Used to decide whether or not to pass an SSH key or security group when creating the servers.
+condition "needsSshKey" do
+  logic_or(equals?($param_location, "AWS"), equals?($param_location, "VMware"))
+end
+
+condition "needsSecurityGroup" do
+  logic_or(equals?($param_location, "AWS"), equals?($param_location, "Google"))
+end
+
+condition "invSphere" do
+  equals?($param_location, "VMware")
+end
+
+condition "inAzure" do
+  equals?($param_location, "Azure")
+end
+
+condition "needsPlacementGroup" do
+  equals?($param_location, "Azure")
+end 
 
 ##############
 # OUTPUTS    #
@@ -212,10 +213,11 @@ end
 resource "client_server", type: "server" do
   name "Chef Client Server"
   cloud map( $map_cloud, $param_location, "cloud" )
-  instance_type  map( $map_instance_type, map( $map_cloud, $param_location,"provider"), $param_performance)
+  instance_type map($map_instancetype, $param_instancetype, $param_location)
   server_template find("Chef Client Beta (v13.5.1)", revision: 32)
-  ssh_key switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "ssh_key"), null)
-  security_groups switch($inAWS, map($map_account, map($map_current_account, "current_account_name", "current_account"), "security_group"), null)
+  ssh_key_href map($map_cloud, $param_location, "ssh_key")
+  placement_group_href map($map_cloud, $param_location, "pg")
+  security_group_hrefs map($map_cloud, $param_location, "sg")  
   inputs do {
     "chef/client/roles" => join(["text:", $param_role]),
     "chef/client/company" => join(["text:", map($map_hosted_chef_account, "opscode_hosted_chef", "chef_org")]),
@@ -226,6 +228,45 @@ resource "client_server", type: "server" do
   } end
 end
 
+resource "sec_group", type: "security_group" do
+  condition $needsSecurityGroup
+
+  name join(["LinuxServerSecGrp-",last(split(@@deployment.href,"/"))])
+  description "Linux Server security group."
+  cloud map( $map_cloud, $param_location, "cloud" )
+end
+
+resource "sec_group_rule_ssh", type: "security_group_rule" do
+  condition $needsSecurityGroup
+
+  name join(["Linux server SSH Rule-",last(split(@@deployment.href,"/"))])
+  description "Allow SSH access."
+  source_type "cidr_ips"
+  security_group @sec_group
+  protocol "tcp"
+  direction "ingress"
+  cidr_ips "0.0.0.0/0"
+  protocol_details do {
+    "start_port" => "22",
+    "end_port" => "22"
+  } end
+end
+
+### SSH Key ###
+resource "ssh_key", type: "ssh_key" do
+  condition $needsSshKey
+
+  name join(["sshkey_", last(split(@@deployment.href,"/"))])
+  cloud map($map_cloud, $param_location, "cloud")
+end
+
+### Placement Group ###
+resource "placement_group", type: "placement_group" do
+  condition $needsPlacementGroup
+
+  name last(split(@@deployment.href,"/"))
+  cloud map($map_cloud, $param_location, "cloud")
+end 
 
 ###############
 ## Operations #
