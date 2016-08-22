@@ -7,7 +7,7 @@ package "plugin/arm_template"
 import "common/functions"
 import "plugin/arm_common"
 
-define launch_arm_template($resource_group, $arm_deployment_name, $param_site_name, $access_token) do
+define launch_arm_template($resource_group, $arm_deployment_name, $access_token) return $website_name, $db_server_name, $db_name do
 
   call arm_common.build_api_url_base() retrieve $api_url_base
   $arm_launch_uri = $api_url_base + "/resourceGroups/" + $resource_group + "/providers/microsoft.resources/deployments/" + $arm_deployment_name + "?api-version=2016-02-01"
@@ -15,7 +15,7 @@ define launch_arm_template($resource_group, $arm_deployment_name, $param_site_na
   # Currently I'm using in-line template in the request. For one I couldn't get it to work with the stored template approach and didn't want to spend too much time figuring out why.
   # Also, this does let me tinker a bit with the values based on user inputs.
   # However, the right answer is to store the main body of the template somewhere and link to it (i.e. use templateLink in the body) and only use in-line specification for the parameters 
-  call build_arm_template_launch_body($param_site_name) retrieve $arm_template_launch_body
+  call build_arm_template_launch_body() retrieve $arm_template_launch_body, $website_name, $db_server_name, $db_name
 
   # Launch the template
   $response = http_put(
@@ -27,7 +27,9 @@ define launch_arm_template($resource_group, $arm_deployment_name, $param_site_na
     },
     body: $arm_template_launch_body
   )
- 
+  
+  call functions.log("ARM Template Launch Response", to_s($response))
+     
   $deployment_not_ready = true
   while $deployment_not_ready do
     # Now wait until it has launched
@@ -50,9 +52,7 @@ define launch_arm_template($resource_group, $arm_deployment_name, $param_site_na
 end
 
 # Build the message body with an in-line ARM template and applicable parameters.
-define build_arm_template_launch_body($site_name) return $arm_template_launch_body do
-  
-  call get_arm_template() retrieve $arm_template
+define build_arm_template_launch_body() return $arm_template_launch_body, $website_name, $db_server_name, $db_name do
   
   $deployment_id = last(split(@@deployment.href,"/"))
   $website_name = "website-" + $deployment_id
@@ -60,8 +60,8 @@ define build_arm_template_launch_body($site_name) return $arm_template_launch_bo
   $db_name = "sqldb-" + $deployment_id
   $hostingplan_name = "hostingplan-" + $deployment_id
   $appinsights_name = "appinsights-" + $deployment_id
-  call functions.get_cred("APP_SETTING_CLIENT_ID") retrieve $app_setting_client_id
-  call functions.get_cred("APP_SETTING_CLIENT_SECRET") retrieve $app_setting_client_secret
+  
+  call get_arm_template($hostingplan_name, $website_name, $db_server_name, $appinsights_name) retrieve $arm_template
   
   $arm_template_launch_body = {
   "properties": {
@@ -105,7 +105,7 @@ end
 
 # Builds an in-line ARM template for launching.
 # Could also reference an ARM template in github or somewhere, but this way it's highly portable.
-define get_arm_template() return $arm_template do
+define get_arm_template($hostingplan_name, $website_name, $db_server_name, $appinsights_name) return $arm_template do
 
 $arm_template = {
   "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
@@ -402,7 +402,7 @@ $arm_template = {
         "action": {
           "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleEmailAction",
           "sendToServiceOwners": true,
-          "customEmails": [ ]
+          "customEmails": []
         }
       }
     },
@@ -436,7 +436,7 @@ $arm_template = {
         "action": {
           "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleEmailAction",
           "sendToServiceOwners": true,
-          "customEmails": [ ]
+          "customEmails": []
         }
       }
     },
@@ -470,7 +470,7 @@ $arm_template = {
         "action": {
           "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleEmailAction",
           "sendToServiceOwners": true,
-          "customEmails": [ ]
+          "customEmails": []
         }
       }
     },
@@ -504,7 +504,7 @@ $arm_template = {
         "action": {
           "odata.type": "Microsoft.Azure.Management.Insights.Models.RuleEmailAction",
           "sendToServiceOwners": true,
-          "customEmails": [ ]
+          "customEmails": []
         }
       }
     },
@@ -514,7 +514,7 @@ $arm_template = {
       "type": "Microsoft.Insights/components",
       "location": "Central US",
       "dependsOn": [
-        "[variables('appInsightsName')]"
+        "[variables('webSiteName')]"
       ],
       "tags": {
         "[concat('hidden-link:', resourceId('Microsoft.Web/sites', variables('webSiteName')))]": "Resource",

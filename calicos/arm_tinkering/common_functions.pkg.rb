@@ -7,14 +7,21 @@ package "common/functions"
 
 # Used to get a credential
 # Requires admin permission
+# TO-DO add logic that raises an error stating if cred name is not found
 define get_cred($cred_name) return $cred_value do
   @cred = rs_cm.credentials.get(filter: "name=="+$cred_name, view: "sensitive") 
   $cred_hash = to_object(@cred)
+  $found_cred = false
   $cred_value = ""
   foreach $detail in $cred_hash["details"] do
     if $detail["name"] == $cred_name
+      $found_cred = true
       $cred_value = $detail["value"]
     end
+  end
+  
+  if logic_not($found_cred)
+    raise "Credential with name, " + $cred_name + ", was not found. Credentials are added in Cloud Management on the Design -> Credentials page."
   end
 end
 

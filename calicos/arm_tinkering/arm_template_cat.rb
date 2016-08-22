@@ -1,10 +1,12 @@
-# Uses an ARM template to launch the stack.
-#
-# TO-DO Handle ARM templates stored in Azure storage instead of passing the template in-line.
-# TO-DO Support launching the template into an existing resource group. This requires that on termination only those resources launched by the template are removed.
-# TO-DO Add parameters to allow the user to specify the values for the serviceplan.
-# TO-DO Add post-launch action to modify the appservice service plan
-
+# Uses an ARM template to launch a web app service + SQL server stack.
+# 
+# RightScale Account Prerequisites:
+#   ARM account: An ARM account needs to be connected to the RightScale account.
+#   Service Principal: A service principal needs to exist for the given ARM subscription and the password for that service principal must be available.
+#   The following CREDENTIALS need to be defined in the RightScale account. (Cloud Management: Design -> Credentials)
+#     ARM_DOMAIN_NAME: The domain name for the ARM account connected to the RightScale account. This will be the first part of the onmicrosoft.com AD domain name.
+#     ARM_PFT_APPLICATION_ID: The "APP ID" for the Service Principal being used.
+#     ARM_PFT_APPLICATION_PASSWORD: The password created for the Service Principal being used.
 
 name 'Launch ARM Template'
 rs_ca_ver 20160622
@@ -38,12 +40,49 @@ parameter "param_chargecode" do
 end
 
 # Outputs
-# TBD
+
+output "output_website_link" do
+  label "Web App Service Link"
+  category "Application Information"
+  description "Link to the web site app service."
+end
+
+output "output_azure_portal_link" do
+  label "Azure ARM Portal Link"
+  category "Deployment Information"
+  description "A link to Azure ARM portal for the launched application."
+end
+
+output "output_resource_group" do
+  label "Resource Group"
+  category "Deployment Information"
+  description "The ARM resource group in which the application was deployed."
+end
+
+output "output_db_server_name" do
+  label "SQL DB Server"
+  category "Deployment Information"
+  description "The SQL DB server name."
+end
+
+output "output_db_name" do
+  label "SQL DB Name"
+  category "Deployment Information"
+  description "The SQL database name."
+end
 
 # Operations
 operation "launch" do 
   description "Launch the deployment based on ARM template."
   definition "arm_deployment_launch"
+  
+  output_mappings do {
+    $output_resource_group => $resource_group, 
+    $output_website_link => join([$website_name, ".azurewebsites.net"]),
+    $output_db_server_name => join([$db_server_name, ".database.windows.net"]),
+    $output_db_name => $db_name,
+    $output_azure_portal_link => join(["https://portal.azure.com/#resource/subscriptions/",$subscription_id,"/resourceGroups/",$resource_group,"/overview"])
+  } end
 end
 
 operation "terminate" do 
@@ -51,7 +90,7 @@ operation "terminate" do
   definition "arm_deployment_terminate"
 end
 
-define arm_deployment_launch($param_site_name, $param_chargecode, $param_resource_group) do
+define arm_deployment_launch($param_chargecode, $param_resource_group) return $resource_group, $website_name, $db_server_name, $db_name, $subscription_id do
     
   # Get the properly formatted or specified info needed for the launch
   call get_launch_info($param_resource_group) retrieve $arm_deployment_name, $resource_group
@@ -67,7 +106,9 @@ define arm_deployment_launch($param_site_name, $param_chargecode, $param_resourc
   call arm_common.create_resource_group($param_location, $resource_group, $tags_hash, $access_token)
   
   # launch the ARM template
-  call arm_template.launch_arm_template($resource_group, $arm_deployment_name, $param_site_name, $access_token)
+  call arm_template.launch_arm_template($resource_group, $arm_deployment_name, $access_token) retrieve $website_name, $db_server_name, $db_name
+  
+  call arm_common.get_subscription_id() retrieve $subscription_id
 
 end
 

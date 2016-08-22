@@ -9,13 +9,19 @@ import "common/functions"
 # Authenticate to AzureRM and get the access token.
 define get_access_token() return $access_token do
   
-  call functions.get_cred("ARM_APPLICATION_ID") retrieve $client_id
-  call functions.get_cred("ARM_APPLICATION_PASSWORD") retrieve $client_secret
+  # TO-DO check if the creds exist and if not, raise an error explaining the names of the creds needed and what 
+  # should be in them. 
+  # Domain Name - the AD domain name used by the subscription. This is the bit before "onmicrosoft.com
+  # Service Principal - App ID
+  # Service Principal - Password that was set up for the SP when created.
+  call functions.get_cred("ARM_DOMAIN_NAME") retrieve $domain_name
+  call functions.get_cred("ARM_PFT_APPLICATION_ID") retrieve $client_id
+  call functions.get_cred("ARM_PFT_APPLICATION_PASSWORD") retrieve $client_secret
   
   $body_string = "grant_type=client_credentials&resource=https://management.core.windows.net/&client_id="+$client_id+"&client_secret="+$client_secret
 
   $auth_response = http_post(
-    url: "https://login.microsoftonline.com/chevronone.onmicrosoft.com/oauth2/token?api-version=1.0",
+    url: "https://login.microsoftonline.com/" + $domain_name + ".onmicrosoft.com/oauth2/token?api-version=1.0",
     headers : {
       "cache-control":"no-cache",
       "content-type":"application/x-www-form-urlencoded"
@@ -33,7 +39,7 @@ end
 
 # helper function to build base URI
 define build_api_url_base() return $api_url_base do
-  call functions.get_cred("ARM_SUBSCRIPTION_ID") retrieve $subscription_id
+  call get_subscription_id() retrieve $subscription_id
   
   $api_url_base = "https://management.azure.com/subscriptions/"+$subscription_id
 end
@@ -55,6 +61,8 @@ define create_resource_group($location, $resource_group, $tags_hash, $access_tok
           "tags": $tags_hash
       }
   )
+  
+  call functions.log("Resource Group Creation Response", to_s($response))
 end
 
 define check_and_remove_resource_group($resource_group, $access_token) do
@@ -102,5 +110,9 @@ define delete_resource_group($resource_group_name, $access_token) return $respon
     }
   )
   
+end
+
+define get_subscription_id() return $subscription_id do
+  call functions.get_cred("ARM_PFT_SUBSCRIPTION_ID") retrieve $subscription_id
 end
 
