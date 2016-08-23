@@ -188,6 +188,8 @@ define terminate_sql_server($access_token, $resource_group_name, $server_name) d
   )
   
   # Delete the creds we created for the sql service
-  call functions.deleteCreds(["ARM_SQL_ADMIN_LOGIN","ARM_SQL_ADMIN_PASSWORD"])
-    
+  call functions.getDeploymentId() retrieve $deployment_id
+  $arm_sql_admin_login = "ARM_SQL_ADMIN_LOGIN-"+$deployment_id
+  $arm_sql_admin_password = "ARM_SQL_ADMIN_PASSWORD-"+$deployment
+  call createCreds([$arm_sql_admin_login, $arm_sql_admin_password])    
 end

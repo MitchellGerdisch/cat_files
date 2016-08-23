@@ -28,11 +28,11 @@ end
 # Creates CREDENTIAL objects in Cloud Management for each of the named items in the given array.
 define createCreds($credname_array) do
   foreach $cred_name in $credname_array do
-    @cred = rs.credentials.get(filter: join(["name==",$cred_name]))
+    @cred = rs_cm.credentials.get(filter: join(["name==",$cred_name]))
     if empty?(@cred) 
       $cred_value = join(split(uuid(), "-"))[0..14] # max of 16 characters for mysql username and we're adding a letter next.
       $cred_value = "a" + $cred_value # add an alpha to the beginning of the value - just in case.
-      @task=rs.credentials.create({"name":$cred_name, "value": $cred_value})
+      @task=rs_cm.credentials.create({"name":$cred_name, "value": $cred_value})
     end
   end
 end
@@ -61,7 +61,7 @@ end
 # Checks if the account supports the selected cloud
 define checkCloudSupport($cloud_name, $param_location) do
   # Gather up the list of clouds supported in this account.
-  @clouds = rs.clouds.get()
+  @clouds = rs_cm.clouds.get()
   $supportedClouds = @clouds.name[] # an array of the names of the supported clouds
   
   # Check if the selected/mapped cloud is in the list and yell if not
@@ -76,7 +76,7 @@ define importServerTemplate($stmap) do
   foreach $st in keys($stmap) do
     $server_template_name = map($stmap, $st, "name")
     $server_template_rev = map($stmap, $st, "rev")
-    @pub_st=rs.publications.index(filter: ["name=="+$server_template_name, "revision=="+$server_template_rev])
+    @pub_st=rs_cm.publications.index(filter: ["name=="+$server_template_name, "revision=="+$server_template_rev])
     @pub_st.import()
   end
 end
@@ -91,7 +91,7 @@ define getUserLogin() return $userlogin do
     end
   end
 
-  $userlogin = rs.users.get(filter: "email=="+$userid).login_name
+  $userlogin = rs_cm.users.get(filter: "email=="+$userid).login_name
 
 end
 
@@ -128,7 +128,7 @@ define get_server_ssh_link($invSphere, $inAzure, $inArm) return $server_ip_addre
     
     # If in Azure classic then there are some port bindings that need to be reflected in the SSH link
     if $inAzure
-       @bindings = rs.clouds.get(href: @linux_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @linux_server.current_instance().href])
+       @bindings = rs_cm.clouds.get(href: @linux_server.current_instance().cloud().href).ip_address_bindings(filter: ["instance_href==" + @linux_server.current_instance().href])
        @binding = select(@bindings, {"private_port":22})
        $server_ip_address = $server_ip_address + ":" + @binding.public_port
     end
