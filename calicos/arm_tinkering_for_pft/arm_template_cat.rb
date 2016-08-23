@@ -7,6 +7,7 @@
 #     ARM_DOMAIN_NAME: The domain name for the ARM account connected to the RightScale account. This will be the first part of the onmicrosoft.com AD domain name.
 #     ARM_PFT_APPLICATION_ID: The "APP ID" for the Service Principal being used.
 #     ARM_PFT_APPLICATION_PASSWORD: The password created for the Service Principal being used.
+#     ARM_PFT_SUBSCRIPTION_ID: The subscription ID for the ARM account connected to the given RightScale account. Can be found in Settings -> Clouds -> select an ARM cloud
 
 name 'Launch ARM Template'
 rs_ca_ver 20160622
@@ -47,12 +48,6 @@ output "output_website_link" do
   description "Link to the web site app service."
 end
 
-output "output_azure_portal_link" do
-  label "Azure ARM Portal Link"
-  category "Deployment Information"
-  description "A link to Azure ARM portal for the launched application."
-end
-
 output "output_resource_group" do
   label "Resource Group"
   category "Deployment Information"
@@ -78,10 +73,9 @@ operation "launch" do
   
   output_mappings do {
     $output_resource_group => $resource_group, 
-    $output_website_link => join([$website_name, ".azurewebsites.net"]),
+    $output_website_link => join(["http://",$website_name, ".azurewebsites.net"]),
     $output_db_server_name => join([$db_server_name, ".database.windows.net"]),
     $output_db_name => $db_name,
-    $output_azure_portal_link => join(["https://portal.azure.com/#resource/subscriptions/",$subscription_id,"/resourceGroups/",$resource_group,"/overview"])
   } end
 end
 
