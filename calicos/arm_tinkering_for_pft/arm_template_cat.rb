@@ -11,7 +11,9 @@
 
 name 'Launch ARM Template'
 rs_ca_ver 20160622
-short_description 'Launch ARM template'
+short_description "![logo](https://s3.amazonaws.com/rs-pft/cat-logos/azure.png)
+
+Launch ARM template"
 long_description "Uses an ARM template to launch an App Service web site with a SQL DB service backend."
 
 

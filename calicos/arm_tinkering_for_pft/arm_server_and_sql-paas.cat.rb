@@ -3,7 +3,10 @@
 
 name 'IaaS and PaaS ARM CAT'
 rs_ca_ver 20160622
-short_description "Launches Linux IaaS server and SQL PaaS Service"
+
+short_description "![logo](https://s3.amazonaws.com/rs-pft/cat-logos/azure.png)
+
+Launches Linux IaaS server and SQL PaaS Service"
 
 import "common/functions"
 import "plugin/arm_common"
@@ -119,12 +122,6 @@ define enable($param_location, $param_costcenter) return $server_ip_address, $sq
   call tag_it($param_costcenter)
   
   call functions.get_server_ssh_link(false, false, true) retrieve $server_ip_address
-  
-  ### Build the SQL service ###
-  # TO-DO: Use Cloud Service Plugins
-  
-  # Get an access token
-  call arm_common.get_access_token() retrieve $access_token
 
   # Create the SQL server in the resource group that was created for the server launch
   $resource_group_name = gsub(@@deployment.name, " ", "")
@@ -136,17 +133,28 @@ define enable($param_location, $param_costcenter) return $server_ip_address, $sq
   # Tag the sql service in ARM with the same costcenter tag
   $tags_hash = { "costcenter": $param_costcenter }
     
+  # Convert location name to Azure-compatible name
+  $azure_region = gsub($param_location, "AzureRM ", "")
+    
+  ### Build the SQL service ###
+  # TO-DO: Use Cloud Service Plugins
+  
+  # Get an access token
+  call arm_common.get_access_token() retrieve $access_token
+  
   # First need to create the sql server - that's how ARM rolls.
-  call arm_sql.create_sql_server($access_token, $resource_group_name, $sqlsrvr_name, $param_location, $tags_hash) retrieve $sqlserver
+  call arm_sql.create_sql_server($access_token, $resource_group_name, $sqlsrvr_name, $azure_region, $tags_hash) retrieve $sqlserver
 
   # Create the SQL DB on the SQL server
-  call arm_sql.create_sql_db($access_token, $resource_group_name, $sqlsrvr_name, $sqldb_name, $param_location, $tags_hash) retrieve $sqldb
+  call arm_sql.create_sql_db($access_token, $resource_group_name, $sqlsrvr_name, $sqldb_name, $azure_region, $tags_hash) retrieve $sqldb
 
   
 end
 
 
 define terminate(@server) do
+
+  delete(@server)
   
   call functions.getDeploymentId() retrieve $deployment_id 
   $sqlsrvr_name = "sqlsrvr-"+$deployment_id
@@ -162,7 +170,6 @@ define terminate(@server) do
   # Terminate the SQL server
   call arm_sql.terminate_sql_server($access_token, $resource_group_name, $sqlsrvr_name)
 
-  delete(@server)
 
 end
 

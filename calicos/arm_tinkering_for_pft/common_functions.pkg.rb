@@ -9,7 +9,7 @@ package "common/functions"
 # Requires admin permission
 # TO-DO add logic that raises an error stating if cred name is not found
 define get_cred($cred_name) return $cred_value do
-  @cred = rs_cm.credentials.get(filter: "name=="+$cred_name, view: "sensitive") 
+  @cred = rs_cm.credentials.get(filter: [ "name=="+$cred_name ], view: "sensitive") 
   $cred_hash = to_object(@cred)
   $found_cred = false
   $cred_value = ""
@@ -28,11 +28,21 @@ end
 # Creates CREDENTIAL objects in Cloud Management for each of the named items in the given array.
 define createCreds($credname_array) do
   foreach $cred_name in $credname_array do
-    @cred = rs_cm.credentials.get(filter: join(["name==",$cred_name]))
+    @cred = rs_cm.credentials.get(filter: [ join(["name==",$cred_name]) ])
     if empty?(@cred) 
-      $cred_value = join(split(uuid(), "-"))[0..14] # max of 16 characters for mysql username and we're adding a letter next.
-      $cred_value = "a" + $cred_value # add an alpha to the beginning of the value - just in case.
+      $cred_value = join(split(uuid(), "-"))[0..12] # max of 16 characters for mysql username and we're adding a letter next.
+      $cred_value = "Ab" + $cred_value # add an alpha to the beginning of the value - just in case.
       @task=rs_cm.credentials.create({"name":$cred_name, "value": $cred_value})
+    end
+  end
+end
+
+# Deletes CREDENTIAL objects in Cloud Management for each of the named items in the given array.
+define deleteCreds($credname_array) do
+  foreach $cred_name in $credname_array do
+    @cred=rs_cm.credentials.get(filter: [join(["name==",$cred_name])])
+    if logic_not(empty?(@cred))
+      @cred.destroy()
     end
   end
 end
@@ -91,7 +101,7 @@ define getUserLogin() return $userlogin do
     end
   end
 
-  $userlogin = rs_cm.users.get(filter: "email=="+$userid).login_name
+  $userlogin = rs_cm.users.get(filter: [ "email=="+$userid ]).login_name
 
 end
 

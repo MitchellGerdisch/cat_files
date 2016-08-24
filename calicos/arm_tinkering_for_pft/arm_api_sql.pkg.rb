@@ -13,8 +13,8 @@ define create_sql_server($access_token, $resource_group_name, $server_name, $loc
   # Create the creds we'll use
   call functions.getDeploymentId() retrieve $deployment_id
   $arm_sql_admin_login = "ARM_SQL_ADMIN_LOGIN-"+$deployment_id
-  $arm_sql_admin_password = "ARM_SQL_ADMIN_PASSWORD-"+$deployment
-  call createCreds([$arm_sql_admin_login, $arm_sql_admin_password])
+  $arm_sql_admin_password = "ARM_SQL_ADMIN_PASSWORD-"+$deployment_id
+  call functions.createCreds([$arm_sql_admin_login, $arm_sql_admin_password])
 
   call functions.get_cred($arm_sql_admin_login) retrieve $sqladminLogin
   call functions.get_cred($arm_sql_admin_password) retrieve $sqladminPassword
@@ -190,6 +190,6 @@ define terminate_sql_server($access_token, $resource_group_name, $server_name) d
   # Delete the creds we created for the sql service
   call functions.getDeploymentId() retrieve $deployment_id
   $arm_sql_admin_login = "ARM_SQL_ADMIN_LOGIN-"+$deployment_id
-  $arm_sql_admin_password = "ARM_SQL_ADMIN_PASSWORD-"+$deployment
-  call createCreds([$arm_sql_admin_login, $arm_sql_admin_password])    
+  $arm_sql_admin_password = "ARM_SQL_ADMIN_PASSWORD-"+$deployment_id
+  call functions.deleteCreds([$arm_sql_admin_login, $arm_sql_admin_password])    
 end
