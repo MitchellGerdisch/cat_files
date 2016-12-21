@@ -1,3 +1,6 @@
+DOES NOT WORK CURRENTLY. Changed where the arm template is built to be in the main cat and not in the api generic pkg file.
+So thing this CAT file needs to be updated to follow that model - see the scale_set example CAT for how it was done there.
+
 # Uses an ARM template to launch a web app service + SQL server stack.
 # 
 # RightScale Account Prerequisites:
