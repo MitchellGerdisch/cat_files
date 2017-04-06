@@ -4,7 +4,7 @@
 #     
 # PREREQUISITES
 #   SAP MCI that points at: ami-cef80ed8
-#     This is a marketplace SUSE-based SAP-HANA AMI.
+#     This is a marketplace SUSE-based SAP-HANA AMI (ami-cef80ed8)
 #     There is a RH version as well, but this CAT is being developed for a customer that uses the SUSE-based version.
 #   SAP ST that points at the MCI.
 #     Base on RL10 Base Linux ST
@@ -24,6 +24,8 @@ long_description "Currently focused on master SAP-Hana node. Later revisions wil
 mapping "map_cloud" do {
   "AWS" => {
     "cloud" => "EC2 us-east-1",
+    "network" => "sap_vpc",
+    "subnets" => "sap_subnet"
   }
 }
 end
@@ -31,61 +33,21 @@ end
 resource 'saphana_master', type: 'server' do
   name join(["hana_master_", last(split(@@deployment.href,"/"))])
   cloud map($map_cloud, "AWS", "cloud")
-  ssh_key @ssh_key
-  network @vpc_network
-  subnets @vpc_subnet
+  network map($map_cloud, "AWS", "network")
+  subnets map($map_cloud, "AWS", "subnets")
   security_groups @sec_group
+  ssh_key @ssh_key
   server_template find('SAP-Hana RL10 Enablement - WIP', revision: 0)
   inputs do {
     'MONITORING_METHOD' => 'text:rightlink',
   } end
 end
 
-### Network Definitions ###
-resource "vpc_network", type: "network" do
-  name join(["cat_vpc_", last(split(@@deployment.href,"/"))])
-  cloud map($map_cloud, "AWS", "cloud")
-  cidr_block "192.168.164.0/24"
-end
-
-resource "vpc_subnet", type: "subnet" do
-  name join(["cat_subnet_", last(split(@@deployment.href,"/"))])
-  cloud map($map_cloud, "AWS", "cloud")
-  network_href @vpc_network
-  cidr_block "192.168.164.0/28"
-end
-
-resource "vpc_igw", type: "network_gateway" do
-  name join(["cat_igw_", last(split(@@deployment.href,"/"))])
-  cloud map($map_cloud, "AWS", "cloud")
-  type "internet"
-  network @vpc_network
-end
-
-resource "vpc_route_table", type: "route_table" do
-  name join(["cat_route_table_", last(split(@@deployment.href,"/"))])
-  cloud map($map_cloud, "AWS", "cloud")
-  network @vpc_network
-end
-
-# This route is needed to allow the server to be able to talk back to RightScale.
-# For a production environment you would probably want to limit the outbound route to just RightScale CIDRs and required ports.
-# But for a demo CAT, this is fine. :)
-resource "vpc_route", type: "route" do
-  name join(["cat_internet_route_", last(split(@@deployment.href,"/"))])
-  destination_cidr_block "0.0.0.0/0" 
-  next_hop_network_gateway @vpc_igw
-  route_table @vpc_route_table
-end
-
-### Security Group Definitions ###
-# Note: Even though not all environments need or use security groups, the launch operation/definition will decide whether or not
-# to provision the security group and rules.
 resource "sec_group", type: "security_group" do
   name join(["HanaSecGrp-",last(split(@@deployment.href,"/"))])
   description "SAP Hana Securiy Group security group."
   cloud map($map_cloud, "AWS", "cloud")
-  network @vpc_network
+  network map($map_cloud, "AWS", "network")
 end
 
 resource "sec_group_rule_ssh", type: "security_group_rule" do
@@ -107,3 +69,5 @@ resource "ssh_key", type: "ssh_key" do
   name join(["sshkey_", last(split(@@deployment.href,"/"))])
   cloud map($map_cloud, "AWS", "cloud")
 end
+
+
