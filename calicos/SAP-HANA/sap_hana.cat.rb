@@ -21,13 +21,35 @@ short_description "![logo](https://www.sap-sdk.dk/images/partner/sap-norge-as.jp
 Launch a SAP-HANA system."
 long_description "Currently focused on master SAP-Hana node. Later revisions will support launching multiple workers."
 
-mapping "map_cloud" do {
-  "AWS" => {
-    "cloud" => "EC2 us-east-1",
-    "network" => "sap_vpc",
-    "subnets" => "sap_subnet"
-  }
-}
+import "sap-hana/security_groups"
+import "sap-hana/mappings"
+
+mapping "map_cloud" do 
+  like $mappings.map_cloud
+end
+
+resource "sec_group", type: "security_group" do
+  like $security_groups.sec_group
+end
+
+resource "sec_group_rule_all_inbound_tcp", type: "security_group_rule" do
+  like $security_groups.sec_group_rule_all_inbound_tcp
+end
+
+resource "sec_group_rule_udp111", type: "security_group_rule" do
+  like $security_groups.sec_group_rule_udp111
+end
+
+resource "sec_group_rule_udp2049", type: "security_group_rule" do
+  like $security_groups.sec_group_rule_udp2049
+end
+
+resource "sec_group_rule_udp400x", type: "security_group_rule" do
+  like $security_groups.sec_group_rule_udp400x
+end
+
+resource "sec_group_rule_icmp", type: "security_group_rule" do
+  like $security_groups.sec_group_rule_icmp
 end
 
 resource 'saphana_master', type: 'server' do
@@ -40,27 +62,6 @@ resource 'saphana_master', type: 'server' do
   server_template find('SAP-Hana RL10 Enablement - WIP', revision: 0)
   inputs do {
     'MONITORING_METHOD' => 'text:rightlink',
-  } end
-end
-
-resource "sec_group", type: "security_group" do
-  name join(["HanaSecGrp-",last(split(@@deployment.href,"/"))])
-  description "SAP Hana Securiy Group security group."
-  cloud map($map_cloud, "AWS", "cloud")
-  network map($map_cloud, "AWS", "network")
-end
-
-resource "sec_group_rule_ssh", type: "security_group_rule" do
-  name join(["SshRule-",last(split(@@deployment.href,"/"))])
-  description "Allow SSH access."
-  source_type "cidr_ips"
-  security_group @sec_group
-  protocol "tcp"
-  direction "ingress"
-  cidr_ips "0.0.0.0/0"
-  protocol_details do {
-    "start_port" => "22",
-    "end_port" => "22"
   } end
 end
 
