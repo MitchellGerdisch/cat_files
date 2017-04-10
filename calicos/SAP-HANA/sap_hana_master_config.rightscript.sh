@@ -10,14 +10,17 @@
 #   SAPAMICODE - default: SLES12SP1SAPHVM
 #	Comes from a mapping in the CFT. Since I'm just doing this one AMI for now, I'll just use a default input.
 #   HOSTCOUNT - passed by CAT based on the number of nodes to be deployed in the cluster.
-#   SAPINSTANCENUM - passed by CAT. Represents the number assigned to this node.	
 #   DOMAINNAME - default: local
 #   HANAMASTERHOSTNAME - default: imdbmaster
 #   HANAMASTERWORKERNAME - default: imdbworker
 #   HOSTCOUNT - default: 1
+#   SID - default: HDB; pattern: "([A-Z]{1}[0-9A-Z]{2})
+#   SAPINSTANCENUM - default: 00
+#   HANAMASTERPASS - pattern: "^(?=.*?[a-z])(?=.*?[A-Z])(?=.*[0-9]).*" (8 chars including upper, lower and numerics)
+#                                {
 
 mkdir /root/install
-wget "https://s3.amazonaws.com/$PRIVATEBUCKET/scripts/download.sh --output-document=/root/install/download.sh
+wget "https://s3.amazonaws.com/$PRIVATEBUCKET/scripts/download.sh" --output-document=/root/install/download.sh
 
 sh /root/install/download.sh -b $PRIVATEBUCKET
 chmod 755 /root/install/*.sh
@@ -52,46 +55,10 @@ sh /root/install/cluster-watch-engine.sh -i "HostCount=$HOSTCOUNT"
 sh /root/install/cluster-watch-engine.sh -i "Status=PRE_INSTALL_COMPLETE"
 sh /root/install/reconcile-ips.sh $HOSTCOUNT >> /root/install.log\n",
 sh /root/install/fence-cluster.sh -w "PRE_INSTALL_COMPLETE_ACK=$HOSTCOUNT"
-sh /root/install/install-master.sh -s ",
-#                                {
-#                                    "Ref": "SID"
-#                                },
-#                                " -i ",
-#                                {
-#                                    "Ref": "SAPInstanceNum"
-#                                },
-#                                " -p ",
-#                                {
-#                                    "Ref": "HANAMasterPass"
-#                                },
-#                                " -n ",
-#                                {
-#                                    "Ref": "HANAMasterHostname"
-#                                },
-#                                " -d ",
-#                                {
-#                                    "Ref": "DomainName"
-#                                },
-#                                " -w ",
-#                                {
-#                                    "Ref": "HANAWorkerHostname"
-#                                },
-#                                "\n",
-#                                "sh /root/install/cluster-watch-engine.sh -s \"MASTER_NODE_COMPLETE\"\n",
-#                                "sh /root/install/wait-for-workers.sh ",
-#                                {
-#                                    "Ref": "HostCount"
-#                                },
-#                                "\n",
-#                                "sh /root/install/cluster-watch-engine.sh  -r \n",
-#                                "sh /root/install/validate-install.sh \"",
-#                                {
-#                                    "Ref": "WaitForMasterInstallWaitHandle"
-#                                },
-#                                "\" \n",
-#                                "#python /root/install/postprocess.py \n",
-#                                "sh /root/install/cleanup.sh \n",
-#                                "\n",
-#                                "\n"
-#                            ]
-#                        ]
+sh /root/install/install-master.sh -s $SID -i $SAPINSTANCENUM -p $HANAMASTERPASS -n $HANAMASTERHOSTNAME -d $DOMAINNAME -w $HANAWORKERHOSTNAME
+sh /root/install/cluster-watch-engine.sh -s "MASTER_NODE_COMPLETE"
+sh /root/install/wait-for-workers.sh $HOSTCOUNT
+sh /root/install/cluster-watch-engine.sh  -r
+#SKIPPING FOR NOW  sh /root/install/validate-install.sh "Ref": "WaitForMasterInstallWaitHandle"
+#      "#python /root/install/postprocess.py \n",
+sh /root/install/cleanup.sh 

@@ -1,8 +1,8 @@
-name "SAP-HANA PKG - Security Groups"
+name "SAP-HANA PKG - Mappings"
 rs_ca_ver 20161221
 short_description "Security Group configuration for SAP-HANA"
 
-package "sap-hana/mappings"
+package "sap_hana/mappings"
 
 mapping "map_cloud" do {
   "AWS" => {
@@ -12,3 +12,20 @@ mapping "map_cloud" do {
   }
 }
 end
+
+mapping "map_instancetype" do {
+  "Standard Performance" => {
+    "AWS" => "t2.large",
+    "Azure" => "D1",
+    "AzureRM" => "D1",
+    "Google" => "n1-standard-1",
+    "VMware" => "small",
+  },
+  "High Performance" => {
+    "AWS" => "r3.2xlarge",
+    "Azure" => "D2",
+    "AzureRM" => "D1",
+    "Google" => "n1-standard-2",
+    "VMware" => "large",
+  }
+} end

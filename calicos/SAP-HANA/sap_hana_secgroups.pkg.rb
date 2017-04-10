@@ -1,15 +1,14 @@
-# NOTE: Currently being lazy and opening the system to 0.0.0.0/0 instead of doing a two-tiered approach with a 
+# NOTE: Currently being lazy and opening the system to 0.0.0.0/0 instead of doing a two-tiered approach with a
 # jump server in a DMZ.
-# The CFT has all sorts of specific ports and two-tiered approach. Will implement that later after getting the
-# system fundamentally working.
+# The CFT has all sorts of specific ports and two-tiered approach. Will implement that later.
 
 name "SAP-HANA PKG - Security Groups"
 rs_ca_ver 20161221
 short_description "Security Group configuration for SAP-HANA"
 
-package "sap-hana/security_groups"
+package "sap_hana/security_groups"
 
-import "sap-hana/mappings"
+import "sap_hana/mappings"
 
 mapping "map_cloud" do 
   like $mappings.map_cloud

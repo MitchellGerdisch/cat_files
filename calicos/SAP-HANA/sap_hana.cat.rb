@@ -21,45 +21,48 @@ short_description "![logo](https://www.sap-sdk.dk/images/partner/sap-norge-as.jp
 Launch a SAP-HANA system."
 long_description "Currently focused on master SAP-Hana node. Later revisions will support launching multiple workers."
 
-import "sap-hana/security_groups"
-import "sap-hana/mappings"
+import "sap_hana/security_groups"
+import "sap_hana/mappings"
+import "pft/parameters"
 
-mapping "map_cloud" do 
-  like $mappings.map_cloud
+parameter "param_location" do 
+  like $parameters.param_location
+  allowed_values "AWS", "AzureRM" 
+  default "AWS"
 end
 
-resource "sec_group", type: "security_group" do
-  like $security_groups.sec_group
+parameter "param_instancetype" do
+  like $parameters.param_instancetype
 end
 
-resource "sec_group_rule_all_inbound_tcp", type: "security_group_rule" do
-  like $security_groups.sec_group_rule_all_inbound_tcp
-end
-
-resource "sec_group_rule_udp111", type: "security_group_rule" do
-  like $security_groups.sec_group_rule_udp111
-end
-
-resource "sec_group_rule_udp2049", type: "security_group_rule" do
-  like $security_groups.sec_group_rule_udp2049
-end
-
-resource "sec_group_rule_udp400x", type: "security_group_rule" do
-  like $security_groups.sec_group_rule_udp400x
-end
-
-resource "sec_group_rule_icmp", type: "security_group_rule" do
-  like $security_groups.sec_group_rule_icmp
+parameter "param_numservers" do
+  like $parameters.param_numservers
+  label "Number of Worker Nodes"
 end
 
 resource 'saphana_master', type: 'server' do
-  name join(["hana_master_", last(split(@@deployment.href,"/"))])
+  name join(["hana_master-", last(split(@@deployment.href,"/"))])
+  cloud map($map_cloud, $param_location, "cloud")
+  network map($map_cloud, $param_location, "network")
+  subnets map($map_cloud, $param_location, "subnets")
+  security_groups @sec_group
+  ssh_key @ssh_key
+  server_template find('SAP-Hana Master Node', revision: 0)
+  instance_type map($map_instancetype, $param_instancetype, $param_location)
+  inputs do {
+    'MONITORING_METHOD' => 'text:rightlink',
+  } end
+end
+
+resource "saphana_workers", type: "server", copies: $param_numservers do
+  name join(['hanaworker-',last(split(@@deployment.href,"/")), "-", copy_index()])
   cloud map($map_cloud, "AWS", "cloud")
   network map($map_cloud, "AWS", "network")
   subnets map($map_cloud, "AWS", "subnets")
   security_groups @sec_group
   ssh_key @ssh_key
-  server_template find('SAP-Hana RL10 Enablement - WIP', revision: 0)
+  server_template find('SAP-Hana Worker Node', revision: 0)
+  instance_type map($map_instancetype, $param_instancetype, "AWS")
   inputs do {
     'MONITORING_METHOD' => 'text:rightlink',
   } end
@@ -69,6 +72,38 @@ end
 resource "ssh_key", type: "ssh_key" do
   name join(["sshkey_", last(split(@@deployment.href,"/"))])
   cloud map($map_cloud, "AWS", "cloud")
+end
+
+mapping "map_cloud" do 
+  like $mappings.map_cloud
+end
+
+mapping "map_instancetype" do 
+  like $mappings.map_instancetype
+end
+
+resource "sec_group", type: "security_group" do
+  like @security_groups.sec_group
+end
+
+resource "sec_group_rule_all_inbound_tcp", type: "security_group_rule" do
+  like @security_groups.sec_group_rule_all_inbound_tcp
+end
+
+resource "sec_group_rule_udp111", type: "security_group_rule" do
+  like @security_groups.sec_group_rule_udp111
+end
+
+resource "sec_group_rule_udp2049", type: "security_group_rule" do
+  like @security_groups.sec_group_rule_udp2049
+end
+
+resource "sec_group_rule_udp400x", type: "security_group_rule" do
+  like @security_groups.sec_group_rule_udp400x
+end
+
+resource "sec_group_rule_icmp", type: "security_group_rule" do
+  like @security_groups.sec_group_rule_icmp
 end
 
 
