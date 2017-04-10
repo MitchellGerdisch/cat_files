@@ -9,16 +9,13 @@ short_description "Security Group configuration for SAP-HANA"
 package "sap_hana/security_groups"
 
 import "sap_hana/mappings"
-
-mapping "map_cloud" do 
-  like $mappings.map_cloud
-end
+import "pft/parameters"
 
 resource "sec_group", type: "security_group" do
   name join(["HanaSecGrp-",last(split(@@deployment.href,"/"))])
   description "SAP Hana Securiy Group security group."
-  cloud map($map_cloud, "AWS", "cloud")
-  network map($map_cloud, "AWS", "network")
+  cloud map($map_cloud, $param_location, "cloud")
+  network map($map_cloud, $param_location, "network")
 end
 
 resource "sec_group_rule_all_inbound_tcp", type: "security_group_rule" do
@@ -77,16 +74,10 @@ resource "sec_group_rule_udp400x", type: "security_group_rule" do
   } end
 end
 
-resource "sec_group_rule_icmp", type: "security_group_rule" do
-  name join(["IcmpRule-",last(split(@@deployment.href,"/"))])
-  description "ICMP Ping"
-  source_type "cidr_ips"
-  security_group @sec_group
-  protocol "icmp"
-  direction "ingress"
-  cidr_ips "0.0.0.0/0"
-  protocol_details do {
-    "icmp_code" => "-1",
-    "icmp_type" => "-1"
-  } end
+parameter "param_location" do 
+  like $parameters.param_location
+end
+
+mapping "map_cloud" do 
+  like $mappings.map_cloud
 end
