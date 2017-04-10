@@ -4,69 +4,40 @@ short_description "Example Business Tags for SAP-HANA"
 
 package "sap_hana/tagging"
 
-parameter "param_bo" do 
-  category "Deployment Options"
-  label "Business Owner (First Name, Last Name)" 
-  type "string" 
-  allowed_pattern '(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=])'
-  default "Google"
-end
-
-
-parameter "param_password" do 
+parameter "param_bc" do 
   category "User Inputs"
-  label "Windows Password" 
-  description "Minimum at least 8 characters and must contain at least one of each of the following: 
-  Uppercase characters, Lowercase characters, Digits 0-9, Non alphanumeric characters [@#\$%^&+=]." 
+  label "Billing Code" 
+  constraint_description "Billing Code must be of the form 4 uppercase characters and 3 numerals (e.g. ABCD123)."
   type "string" 
-  min_length 8
-  max_length 32
+  min_length 7
+  max_length 7
   # This enforces a stricter windows password complexity in that all 4 elements are required as opposed to just 3.
-  allowed_pattern '(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=])'
-  no_echo "true"
+  allowed_pattern '[A-Z]{4}[0-9]{3}'
 end
-BUSINESSOWNER= ‘FIRST NAME, LAST NAME’
-BILLINGCODE= ‘XYS123’
-NAME= ‘SERVERNAME’
-ENVIRONMENT= PRD | NPD | SBX | SYS | DEV | TEST |UAT | STAGE | LOAD | QA
-PROJECTNAME= ‘PROJECT NAME’
 
+parameter "param_env" do 
+  category "User Inputs"
+  label "Environment" 
+  type "string" 
+  allowed_values "PRD", "NPD", "SBX", "SYS", "DEV", "TEST", "UAT", "STAGE", "LOAD", "QA"
+  default "TEST"
+end
 
-define tagger($resource_array, $param_bo, $param_bc, $param_env, $param_proj)  do
+parameter "param_proj" do 
+  category "User Inputs"
+  label "Project" 
+  type "string" 
+  min_length 1 # This forces the user to enter a value. 
+end
+
+define deployment_resources_tagger($param_bc, $param_env, $param_proj)  do
+  # Get the launching user's first and last name from the system and use that for the "businessowner" tag.
+    $session = rs_cm.sessions.index(view: "whoami")
+    $user_id = select($session[0]["links"], {"rel":"user"})[0]["href"]
+    @user = rs_cm.get(href: $user_id)
+    $business_owner = @user.first_name + " " + @user.last_name
   
-    # Tag the servers with the selected project cost center ID.
-    $tags=["MEMBERFIRM=US", "COUNTRY=US", "FUNCTION=CON", "SUBFUNCTION=DCP", "BUSINESSOWNER="+$param_bo, "BILLINGCODE="+$param_bc,
-      "ENVIRONMENT="+$param_env, "PROJECTNAME="+$param_proj]
+    # Tag the servers appropriately.
+    $tags=["ec2:MEMBERFIRM=US", "ec2:COUNTRY=US", "ec2:FUNCTION=CON", "ec2:SUBFUNCTION=DCP", "ec2:BUSINESSOWNER="+$business_owner, "ec2:BILLINGCODE="+$param_bc,"ec2:ENVIRONMENT="+$param_env, "ec2:PROJECTNAME="+$param_proj]
     rs_cm.tags.multi_add(resource_hrefs: @@deployment.servers().current_instance().href[], tags: $tags)
-    
 end 
-
-
-
-
-
-mapping "map_cloud" do {
-  "AWS" => {
-    "cloud" => "EC2 us-east-1",
-    "network" => "sap_vpc",
-    "subnets" => "sap_subnet"
-  }
-}
-end
-
-mapping "map_instancetype" do {
-  "Standard Performance" => {
-    "AWS" => "t2.large",
-    "Azure" => "D1",
-    "AzureRM" => "D1",
-    "Google" => "n1-standard-1",
-    "VMware" => "small",
-  },
-  "High Performance" => {
-    "AWS" => "r3.2xlarge",
-    "Azure" => "D2",
-    "AzureRM" => "D1",
-    "Google" => "n1-standard-2",
-    "VMware" => "large",
-  }
-} end

@@ -23,6 +23,7 @@ long_description "Currently focused on master SAP-Hana node. Later revisions wil
 
 import "sap_hana/security_groups"
 import "sap_hana/mappings"
+import "sap_hana/tagging"
 import "pft/parameters"
 
 parameter "param_location" do 
@@ -38,6 +39,18 @@ end
 parameter "param_numservers" do
   like $parameters.param_numservers
   label "Number of Worker Nodes"
+end
+
+parameter "param_bc" do 
+  like $tagging.param_bc
+end
+
+parameter "param_env" do 
+  like $tagging.param_env
+end
+
+parameter "param_proj" do 
+  like $tagging.param_proj
 end
 
 resource 'saphana_master', type: 'server' do
@@ -62,6 +75,15 @@ resource "saphana_workers", type: "server", copies: $param_numservers do
     'MONITORING_METHOD' => 'text:rightlink',
   } end
 end
+
+operation "enable" do
+  description "Post launch orchestration"
+  definition "enable"
+end
+
+define enable($param_bc, $param_env, $param_proj) do
+  call tagging.deployment_resources_tagger($param_bc, $param_env, $param_proj)
+end 
 
 ### SSH key declarations ###
 resource "ssh_key", type: "ssh_key" do
