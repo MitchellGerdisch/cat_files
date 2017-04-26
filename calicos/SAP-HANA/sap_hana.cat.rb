@@ -3,23 +3,27 @@
 #   CFT this CAT is based on: http://docs.aws.amazon.com/quickstart/latest/sap-hana/welcome.html
 #     
 # PREREQUISITES
-#   SAP MCI that points at: ami-cef80ed8
-#     This is a marketplace SUSE-based SAP-HANA AMI (ami-cef80ed8)
-#     There is a RH version as well, but this CAT is being developed for a customer that uses the SUSE-based version.
-#   SAP ST that points at the MCI.
-#     Base on RL10 Base Linux ST
-#     ST Boot Sequence Modified:
-#       Remove NTP (not SUSE compatible code and not really needed)
-#       Remove RedHat Subscription Register
-#       Remove Setup Automatic Upgrade
-#       
+# Login to AWS Console to accept Terms and Conditions for using the AMI.
+#   https://aws.amazon.com/marketplace/fulfillment?pricing=hourly&productId=2f28c0e5-af3e-4d22-95f1-6c1af645c209&ref_=dtl_psb_continue&region=us-east-1&versionTitle=v20170121
+# Setup ServerTemplates As Follows
+#     Clone RL10 Base Linux ST
+#       Name it: SAP-Hana Master Node
+#     Modify Boot Sequence as follows:
+#       Remove NTP - not SUSE compatible code and not really needed)
+#       Remove RedHat Subscription Register - just because you're tinkering with the ST anyway
+#       Remove Setup Automatic Upgrade - again just because
+#     Clone the SAP-Hana Master Node
+#       Name it: SAP-Hana Worker Node
+#      
+# TO-DOs:
+#   Add applicable configuration scripts to the Master and Worker node ServerTemplates to configure them accordingly. 
 
 name "SAP-HANA CAT"
 rs_ca_ver 20161221
 short_description "![logo](https://s3.amazonaws.com/rs-pft/cat-logos/SAP-Hana-Logo.png) 
 
 Launch a SAP-HANA system."
-long_description "Currently focused on master SAP-Hana node. Later revisions will support launching multiple workers."
+long_description "Launches SAP-Hana master and worker nodes based on off-the-shelf SAP-Hana AMI."
 
 import "sap_hana/security_groups"
 import "sap_hana/mappings"
@@ -28,7 +32,7 @@ import "pft/parameters"
 
 parameter "param_location" do 
   like $parameters.param_location
-  allowed_values "AWS", "AzureRM"  # ARM SAP image is RHEL based image and in ARM RHEL doesn't have cloud-init so install-at-boot doesn't work
+  allowed_values "AWS" #, "AzureRM"  # ARM SAP image is RHEL based image and in ARM RHEL doesn't have cloud-init so install-at-boot doesn't work
   default "AWS"
 end
 
@@ -53,15 +57,35 @@ parameter "param_proj" do
   like $tagging.param_proj
 end
 
+output_set "master_public_ips" do
+  label "Master Server IP"
+  category "Output"
+  description "IP address for the master server."
+  default_value @saphana_master.public_ip_address
+end
+
+output_set "workers_public_ips" do
+  label "Worker Server IP"
+  category "Output"
+  description "IP address for the worker server."
+  default_value @saphana_workers.public_ip_address
+end
+
 resource 'saphana_master', type: 'server' do
-  name join(["hana_master-", last(split(@@deployment.href,"/"))])
+  name join(["hanamaster-", last(split(@@deployment.href,"/"))])
   cloud map($map_cloud, $param_location, "cloud")
   network map($map_cloud, $param_location, "network")
   subnets map($map_cloud, $param_location, "subnets")
   security_group_hrefs map($map_cloud, $param_location, "sg")  
   ssh_key_href map($map_cloud, $param_location, "ssh_key")
-  server_template find('SAP-Hana Master Node', revision: 0)
+  server_template find('SAP-Hana Master Node', revision: 0) 
   instance_type map($map_instancetype, $param_instancetype, $param_location)
+  
+  # FORCE the image to use the applicable image. This is somewhat unorthodox and a warning will be seen in Cloud Management 
+  # for the server. But it saves the bother of creating an MultiCloud Image that points to the right image.
+  # So maintenance is easier. To use a different image simply change the mapping package file.
+  image find(resource_uid: map($map_image, $param_location, "resource_uid")) 
+    
   inputs do {
     'MONITORING_METHOD' => 'text:rightlink',
   } end
@@ -93,6 +117,10 @@ end
 
 mapping "map_cloud" do 
   like $mappings.map_cloud
+end
+
+mapping "map_image" do 
+  like $mappings.map_image
 end
 
 mapping "map_instancetype" do 

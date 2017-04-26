@@ -1,3 +1,8 @@
+DOES NOT WORK
+This was a quick port of the user-data script from SAP-Hana quick start CFT in hopes that it would just
+magically work, but it needs more care and feeding.
+
+
 #! /usr/bin/sudo /bin/bash
 
 # Port of the user-data script for the SAP-Hana master node from the quick start CFT

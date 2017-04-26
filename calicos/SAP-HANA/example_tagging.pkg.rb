@@ -13,6 +13,7 @@ parameter "param_bc" do
   max_length 7
   # This enforces a stricter windows password complexity in that all 4 elements are required as opposed to just 3.
   allowed_pattern '[A-Z]{4}[0-9]{3}'
+  default "ABCD123"
 end
 
 parameter "param_env" do 
@@ -28,6 +29,7 @@ parameter "param_proj" do
   label "Project" 
   type "string" 
   min_length 1 # This forces the user to enter a value. 
+  default "Abc"
 end
 
 define deployment_resources_tagger($param_bc, $param_env, $param_proj)  do
