@@ -57,13 +57,14 @@ define launch_server(@linux_server) do
 
   # Create and add the tags.
   # NOTE: This will overwrite any MCI proxy tags.
-  $http_proxy_tag = "rs_agent:http_proxy=http://1.2.3.4:8080"
+  $http_proxy_tag = "rs_agent:http_proxy=http://1.2.3.4:80"
   $http_proxy_user_tag = "rs_agent:http_proxy_user=cred:PROXY_USER"
   $http_proxy_password_tag = "rs_agent:http_proxy_password=cred:PROXY_PASSWORD"
   $tags = [$http_proxy_tag, $http_proxy_user_tag, $http_proxy_password_tag]
   rs_cm.tags.multi_add(resource_hrefs: [@linux_server.href], tags: $tags)
 
   # Now launch the server
+#  provision(@linux_server)
   @linux_server.launch()
   
 end

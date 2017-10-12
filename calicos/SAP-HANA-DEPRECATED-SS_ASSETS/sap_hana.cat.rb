@@ -1,6 +1,6 @@
 #
 # REFERENCES:
-#   CFT this CAT is based on: http://docs.aws.amazon.com/quickstart/latest/sap-hana/welcome.html
+#   CFT this CAT was intended to be based on: http://docs.aws.amazon.com/quickstart/latest/sap-hana/welcome.html
 #     
 # PREREQUISITES
 # Login to AWS Console to accept Terms and Conditions for using the AMI.
