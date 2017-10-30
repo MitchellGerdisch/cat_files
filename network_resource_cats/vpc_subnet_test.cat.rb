@@ -7,25 +7,16 @@ import "pft/err_utilities", as: "debug"
 mapping "map_cloud" do {
   "AWS" => {
     "cloud" => "EC2 us-east-1",
-    "datacenter" => "us-east-1e",
-    "datacenter_href" => "/api/clouds/1/datacenters/2RL5JPQPDMCRS",
-    "network" => null,
-    "subnet" => null,
-    "instance_type" => "m3.large" },
+    "datacenter" => "us-east-1e"
+  },
   "Google" => {
     "cloud" => "Google",
-    "datacenter" => "us-central1-b",
-    "datacenter_href" => null,
-    "network" => null,
-    "subnet" => null,
-    "instance_type" => "n1-standard-1" },
+    "datacenter" => "us-central1-b"
+  },
   "AzureRM" => {   
     "cloud" => "AzureRM East US",
-    "datacenter" => null,
-    "datacenter_href" => null,
-    "network" => "pft_arm_network",
-    "subnet" => "default",
-    "instance_type" => "D1" },
+    "datacenter" => null
+  }
 } end
 
 parameter "cloud" do
@@ -48,8 +39,7 @@ end
 resource "vpc_subnet", type: "subnet" do
   name join(["cat_subnet_", last(split(@@deployment.href,"/"))])
   cloud map($map_cloud, $cloud, "cloud")
-#  datacenter map($map_cloud, $cloud, "datacenter")
-  datacenter map($map_cloud, $cloud, "datacenter_href") 
+  datacenter map($map_cloud, $cloud, "datacenter")
   network_href @vpc_network
   cidr_block "10.1.1.0/24"
 end
@@ -75,7 +65,6 @@ resource "vpc_route", type: "route" do
   route_table @vpc_route_table
 end
 
-# Used to allow cluster master and nodes to talk to each other
 resource 'cluster_sg', type: 'security_group' do
   name join(['ClusterSG-', last(split(@@deployment.href, '/'))])
   description "Cluster security group."
@@ -83,7 +72,6 @@ resource 'cluster_sg', type: 'security_group' do
   network_href @vpc_network
 end
 
-# Allow the master and nodes to talk to each other
 resource 'cluster_sg_rule_int_tcp', type: 'security_group_rule' do
   name "ClusterSG TCP Rule"
   description "TCP rule for Cluster SG"
@@ -136,12 +124,12 @@ define launch(@vpc_network, @vpc_subnet, @vpc_igw, @vpc_route_table, @vpc_route,
   end
   
   call debug.log("after provision: subnet hash", to_s(to_object(@vpc_subnet)))
-
   
   provision(@vpc_route)
+  
+  # cluster_sg gets created automatically by provisioning the rules
   call debug.log("before provision: cluster_sg hash", to_s(to_object(@cluster_sg)))
 
-  provision(@cluster_sg)
   provision(@cluster_sg_rule_int_tcp)
   provision(@cluster_sg_rule_int_udp)
   
