@@ -40,6 +40,7 @@ resource "vpc_subnet", type: "subnet" do
   name join(["cat_subnet_", last(split(@@deployment.href,"/"))])
   cloud map($map_cloud, $cloud, "cloud")
   datacenter map($map_cloud, $cloud, "datacenter")
+#  datacenter_href "/api/clouds/1/datacenters/2RL5JPQPDMCRS"  #### datacenter_href is not allowed! ###
   network_href @vpc_network
   cidr_block "10.1.1.0/24"
 end
