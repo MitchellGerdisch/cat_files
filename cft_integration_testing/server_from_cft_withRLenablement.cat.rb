@@ -49,8 +49,6 @@ define post_launch(@stack) return $instance_address do
   foreach $outputkey in @stack.OutputKey do
     if $outputkey == "InstanceId"
       $instance_id = $outputvalues[$outputs_index]
-    elsif $outputkey == "PublicIP"
-      $instance_address = $outputvalues[$outputs_index]
     end
     $outputs_index = $outputs_index + 1
   end
@@ -69,13 +67,14 @@ define post_launch(@stack) return $instance_address do
   # Todo: abstract this to find the right cloud based on information from the stack.
   @cloud = rs_cm.get(href: "/api/clouds/1")
   
-
   # Now go off and turn it into a RightScale managed server
   call rightlink_enable(@cloud, $instance_id) retrieve @server
   
-  
+  $instance_address = @server.public_ip_addresses[0]
 end
 
+# Orchestrate RightLink enablement of the instance.
+# Once enabled, it is a "server."
 define rightlink_enable(@cloud, $instance_id) return @server do
   # Find the instance
   @instance = @cloud.instances(filter: ["resource_uid=="+$instance_id])
@@ -102,19 +101,24 @@ define rightlink_enable(@cloud, $instance_id) return @server do
   # Now install userdata that runs RL enablement code
   call install_rl_installscript(@instance, "RightLink 10.6.0 Linux Base", "BornCFT_AdoptedRS")
   
+  # Once the user-data is set, start the instance so RL enablement will be run
   call err_utilities.log("starting instance", to_s(to_object(@instance)))
   @instance.start()
   sleep_until(@instance.state == "operational")
   
-  @server = @instance.parent()
+  # Wait until the instance has it's parent link to find the related server object.
+  sub on_error: retry do
+    @server = @instance.parent()
+  end
   call err_utilities.log("instance's parent server", to_s(to_object(@server)))
 end
 
-# Uses EC2 ModifyInstanceAttribute API to install user data that runs RL enablement
+# Uses EC2 ModifyInstanceAttribute API to install user data that runs RL enablement script
 define install_rl_installscript(@instance, $server_template, $servername) do
   
-  $instance_id = @instance.resource_uid
+  $instance_id = @instance.resource_uid # needed for the API URL
 
+  # generate the user-data that runs the RL enablement script.
   call build_rl_enablement_userdata($server_template, $servername) retrieve $user_data
     
   # base64 encode the user-data since AWS requires that 
@@ -127,6 +131,7 @@ define install_rl_installscript(@instance, $server_template, $servername) do
   
   call err_utilities.log("encoded userdata", $user_data_base64)
 
+  # Go tell AWS to update the user-data for the instance
   $url = "https://ec2.amazonaws.com/?Action=ModifyInstanceAttribute&InstanceId="+$instance_id+"&UserData.Value="+$user_data_base64+"&Version=2014-02-01"
   $signature = {
     "type":"aws",
