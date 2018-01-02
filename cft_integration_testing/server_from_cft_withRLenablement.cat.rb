@@ -3,8 +3,8 @@ rs_ca_ver 20161221
 short_description  "CFT launched server with RL enablement applied afterwards"
 
 import "plugins/rs_aws_cft"
-
-import "pft/err_utilities"
+import "pft/err_utilities", as: "debug"
+import "aws_rightlink_enablement" as "rl_enable"
 
 output "output_ip_address" do
   label "IP Address"
@@ -38,7 +38,7 @@ operation "enable" do
 end
 
 define post_launch(@stack) return $instance_address do
-  call err_utilities.log("output values", to_s(@stack.OutputValue))
+  call debug.log("output values", to_s(@stack.OutputValue))
   
   # Find the instance attributes
   $outputs_index = 0
@@ -53,7 +53,7 @@ define post_launch(@stack) return $instance_address do
     $outputs_index = $outputs_index + 1
   end
   
-  call err_utilities.log("$instance_id: "+$instance_id+"; $instance_address: "+$instance_address, "")
+  call debug.log("$instance_id: "+$instance_id+"; $instance_address: "+$instance_address, "")
   
   # Now to orchestrate things to RL enable the instance
   # Process:
@@ -66,21 +66,21 @@ define post_launch(@stack) return $instance_address do
   # In this case I know we are in EC2 US-East-1 which means /api/clouds/1.
   # Todo: abstract this to find the right cloud based on information from the stack.
   @cloud = rs_cm.get(href: "/api/clouds/1")
-  
+  @instance = @cloud.instances(filter: ["resource_uid=="+$instance_id])
+
   # Now go off and turn it into a RightScale managed server
-  call rightlink_enable(@cloud, $instance_id) retrieve @server
+  call rl_enable.rightlink_enable(@instance) 
   
-  $instance_address = @server.public_ip_addresses[0]
+  $instance_address = @instance.public_ip_addresses[0]
 end
 
 # Orchestrate RightLink enablement of the instance.
 # Once enabled, it is a "server."
 define rightlink_enable(@cloud, $instance_id) return @server do
   # Find the instance
-  @instance = @cloud.instances(filter: ["resource_uid=="+$instance_id])
   
   # Stop the instance
-  call err_utilities.log("stopping instance", to_s(to_object(@instance)))
+  call debug.log("stopping instance", to_s(to_object(@instance)))
   @instance.stop()
   
   # Once the instance is stopped it gets a new HREF ("next instance"), 
@@ -91,7 +91,7 @@ define rightlink_enable(@cloud, $instance_id) return @server do
     sleep(15)
     # Find the instance
     @instance = @cloud.instances(filter: ["resource_uid=="+$instance_id])
-    call err_utilities.log("checking if instance has stopped", to_s(to_object(@instance)))
+    call debug.log("checking if instance has stopped", to_s(to_object(@instance)))
     # Is it stopped?
     if @instance.state == "provisioned"
       $stopped = true
@@ -102,7 +102,7 @@ define rightlink_enable(@cloud, $instance_id) return @server do
   call install_rl_installscript(@instance, "RightLink 10.6.0 Linux Base", "BornCFT_AdoptedRS")
   
   # Once the user-data is set, start the instance so RL enablement will be run
-  call err_utilities.log("starting instance", to_s(to_object(@instance)))
+  call debug.log("starting instance", to_s(to_object(@instance)))
   @instance.start()
   sleep_until(@instance.state == "operational")
   
@@ -110,7 +110,7 @@ define rightlink_enable(@cloud, $instance_id) return @server do
   sub on_error: retry do
     @server = @instance.parent()
   end
-  call err_utilities.log("instance's parent server", to_s(to_object(@server)))
+  call debug.log("instance's parent server", to_s(to_object(@server)))
 end
 
 # Uses EC2 ModifyInstanceAttribute API to install user data that runs RL enablement script
@@ -129,7 +129,7 @@ define install_rl_installscript(@instance, $server_template, $servername) do
   # Replace any = with html code %3D so the URL is valid.
   $user_data_base64 = gsub($user_data_base64, /=/, "%3D")
   
-  call err_utilities.log("encoded userdata", $user_data_base64)
+  call debug.log("encoded userdata", $user_data_base64)
 
   # Go tell AWS to update the user-data for the instance
   $url = "https://ec2.amazonaws.com/?Action=ModifyInstanceAttribute&InstanceId="+$instance_id+"&UserData.Value="+$user_data_base64+"&Version=2014-02-01"
@@ -143,14 +143,18 @@ define install_rl_installscript(@instance, $server_template, $servername) do
     signature: $signature
     )
     
-   call err_utilities.log("AWS API response", to_s($response))
+   call debug.log("AWS API response", to_s($response))
 end
 
 define build_rl_enablement_userdata($server_template_name, $server_name) return $user_data do
   
-  $rl_enablement_cmd = 'curl -s https://rightlink.rightscale.com/rll/10/rightlink.enable.sh | sudo bash -s -- -k "'+cred("RS_REFRESH_TOKEN")+'" -t "'+$server_template_name+'" -n "'+$server_name+'" -d "'+@@deployment.name+'" -c "amazon"'
+  # If you look at the RightScale docs, you'll see this line has a sudo before bash, but it's not used here.
+  # Since cloud-init runs as root and since the sudo in there may throw the "tty" error, it's really not needed.
+  $rl_enablement_cmd = 'curl -s https://rightlink.rightscale.com/rll/10/rightlink.enable.sh | bash -s -- -k "'+cred("RS_REFRESH_TOKEN")+'" -t "'+$server_template_name+'" -n "'+$server_name+'" -d "'+@@deployment.name+'" -c "amazon"'
 
   # This sets things up so the script runs on start.
+  # Note that the RL enablement script is given a name that should ensure it runs first.
+  # This is important if there are other scripts already on the server.
   $user_data = 'Content-Type: multipart/mixed; boundary="//"
 MIME-Version: 1.0
   
@@ -168,7 +172,7 @@ cloud_final_modules:
 Content-Type: text/x-shellscript; charset="us-ascii"
 MIME-Version: 1.0
 Content-Transfer-Encoding: 7bit
-Content-Disposition: attachment; filename="userdata.txt"
+Content-Disposition: attachment; filename="aaa_rlenable.sh"
 
 #!/bin/bash
 '+$rl_enablement_cmd+'
